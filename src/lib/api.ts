@@ -26,4 +26,5 @@ export const api = {
   retryDownload: (id: string) => invoke<void>('retry_download', { id }),
   cancelDownload: (id: string) => invoke<void>('cancel_download', { id }),
   removeDownload: (id: string, deleteFile: boolean) => invoke<void>('remove_download', { id, deleteFile }),
+  deleteQueue: (id: string) => invoke<void>('delete_queue', { id }),
 }

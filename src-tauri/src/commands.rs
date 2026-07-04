@@ -224,6 +224,35 @@ pub async fn cancel_download(state: State<'_, AppState>, app: AppHandle, id: Str
     }
 }
 
+/// Deleting a queue never deletes its downloads — members are reassigned to
+/// the default queue so nothing silently disappears from the list.
+#[tauri::command]
+pub async fn delete_queue(state: State<'_, AppState>, app: AppHandle, id: String) -> Result<(), String> {
+    if id == "default" {
+        return Err("the default queue can't be deleted".to_string());
+    }
+
+    let reassigned = {
+        let mut records = state.records.lock().await;
+        records
+            .values_mut()
+            .filter(|r| r.queue == id)
+            .map(|r| {
+                r.queue = "default".to_string();
+                r.clone()
+            })
+            .collect::<Vec<_>>()
+    };
+    for record in &reassigned {
+        publish(&app, &state, record);
+    }
+
+    state.queues.lock().await.retain(|q| q.id != id);
+    state.db.delete_queue(&id);
+    let _ = app.emit("queue-removed", &id);
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn remove_download(state: State<'_, AppState>, app: AppHandle, id: String, delete_file: bool) -> Result<(), String> {
     let id = Uuid::parse_str(&id).map_err(|e| e.to_string())?;

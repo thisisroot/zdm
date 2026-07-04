@@ -123,13 +123,13 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
       if (mode === 'single') {
         let queue = queueId
         if (queueId === '__new__') queue = `New Queue ${queues.length + 1}`
-        await onAddSingle({ url, destinationDir: saveDir, connections, category: category || 'archive', queue })
+        await onAddSingle({ url, destinationDir: saveDir, connections, category: category || 'other', queue })
       } else {
         await onAddBatch({
           urlPattern: batchUrl,
           destinationDir: batchSaveDir,
           connections: batchConnections,
-          category: batchCategory || 'archive',
+          category: batchCategory || 'other',
           queueName: batchQueueName || batchUrl,
         })
       }

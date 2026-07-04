@@ -6,23 +6,45 @@ import { CancelIcon, FolderIcon, PauseIcon, PlayIcon, RetryIcon } from './icons'
 interface DownloadRowProps {
   record: DownloadRecord
   selected: boolean
+  checked: boolean
   queueName: string | null
   onSelect: () => void
+  onToggleCheck: () => void
   onPause: () => void
   onResume: () => void
   onRetry: () => void
-  onCancel: () => void
+  onRemove: () => void
   onOpenFolder: () => void
 }
 
-export function DownloadRow({ record, selected, queueName, onSelect, onPause, onResume, onRetry, onCancel, onOpenFolder }: DownloadRowProps) {
+export function DownloadRow({
+  record,
+  selected,
+  checked,
+  queueName,
+  onSelect,
+  onToggleCheck,
+  onPause,
+  onResume,
+  onRetry,
+  onRemove,
+  onOpenFolder,
+}: DownloadRowProps) {
   const cat = categoryById(record.category)
   const connectionsLabel =
     record.status === 'failed' ? 'connection reset · retry available' : `${record.connections} connections · ${pct(record)}%`
 
   return (
-    <div className={`row${selected ? ' selected' : ''}`} onClick={onSelect}>
+    <div className={`row${selected ? ' selected' : ''}${checked ? ' checked' : ''}`} onClick={onSelect}>
       <div className="row-top">
+        <input
+          type="checkbox"
+          className="row-check"
+          checked={checked}
+          onClick={(e) => e.stopPropagation()}
+          onChange={onToggleCheck}
+          aria-label={`Select ${record.name}`}
+        />
         <div className="filetype" style={{ background: cat.color }}>{cat.glyph}</div>
         <div className="row-name">
           <div className="fname">{record.name}</div>
@@ -33,7 +55,7 @@ export function DownloadRow({ record, selected, queueName, onSelect, onPause, on
         </div>
         <span className={`status-pill ${record.status}`}>{record.status}</span>
         <div className="row-stats">
-          <div className="speed tabular">{record.status === 'downloading' ? formatSpeed(record.speedBps) : ' '}</div>
+          <div className="speed tabular">{record.status === 'downloading' ? formatSpeed(record.speedBps) : ' '}</div>
           <div className="eta tabular">{formatEta(record)}</div>
         </div>
       </div>
@@ -48,11 +70,8 @@ export function DownloadRow({ record, selected, queueName, onSelect, onPause, on
           {(record.status === 'failed' || record.status === 'canceled') && (
             <button title="Retry" onClick={onRetry}><RetryIcon /></button>
           )}
-          {record.status === 'completed' ? (
-            <button title="Show in folder" onClick={onOpenFolder}><FolderIcon /></button>
-          ) : (
-            <button title="Cancel" onClick={onCancel}><CancelIcon /></button>
-          )}
+          {record.status === 'completed' && <button title="Show in folder" onClick={onOpenFolder}><FolderIcon /></button>}
+          <button title="Remove" onClick={onRemove}><CancelIcon /></button>
         </div>
       </div>
     </div>

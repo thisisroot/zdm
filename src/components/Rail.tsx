@@ -1,7 +1,7 @@
 import { CATEGORIES } from '../lib/categories'
 import type { DownloadRecord, DownloadStatus, Filter, QueueInfo } from '../lib/types'
 import { matchesFilter } from '../lib/types'
-import { CategoryIcons, ListIcon, PauseIcon, PlayIcon } from './icons'
+import { CancelIcon, CategoryIcons, ListIcon, PauseIcon, PlayIcon } from './icons'
 
 interface RailProps {
   downloads: DownloadRecord[]
@@ -9,6 +9,7 @@ interface RailProps {
   filter: Filter
   onFilterChange: (filter: Filter) => void
   onToggleQueue: (queueId: string) => void
+  onDeleteQueue: (queueId: string) => void
 }
 
 const STATUS_ITEMS: { status: DownloadStatus; label: string; dot: string }[] = [
@@ -23,7 +24,7 @@ function sameFilter(a: Filter, b: Filter): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
-export function Rail({ downloads, queues, filter, onFilterChange, onToggleQueue }: RailProps) {
+export function Rail({ downloads, queues, filter, onFilterChange, onToggleQueue, onDeleteQueue }: RailProps) {
   const countFor = (f: Filter) => downloads.filter((d) => matchesFilter(d, f)).length
 
   return (
@@ -67,6 +68,20 @@ export function Rail({ downloads, queues, filter, onFilterChange, onToggleQueue 
             >
               {anyRunning ? <PauseIcon strokeWidth={2.4} /> : <PlayIcon strokeWidth={2.4} />}
             </span>
+            {q.id !== 'default' && (
+              <span
+                className="rail-hover-action rail-hover-danger"
+                title="Delete queue"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (window.confirm(`Delete "${q.name}"? Its downloads will move to the Default Queue.`)) {
+                    onDeleteQueue(q.id)
+                  }
+                }}
+              >
+                <CancelIcon strokeWidth={2.4} />
+              </span>
+            )}
             <span className="count">{items.length}</span>
           </button>
         )

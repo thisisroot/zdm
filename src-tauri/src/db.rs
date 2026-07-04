@@ -72,6 +72,11 @@ impl Db {
         );
     }
 
+    pub fn delete_queue(&self, id: &str) {
+        let conn = self.0.lock().unwrap();
+        let _ = conn.execute("DELETE FROM queues WHERE id = ?1", params![id]);
+    }
+
     pub fn save_settings(&self, settings: &Settings) {
         let conn = self.0.lock().unwrap();
         let data = serde_json::to_string(settings).expect("Settings always serializes");
@@ -124,6 +129,9 @@ mod tests {
         let queue = QueueInfo { id: "batch-1".to_string(), name: "Batch One".to_string() };
         db.upsert_queue(&queue);
         assert_eq!(db.load_queues(), vec![queue]);
+
+        db.delete_queue("batch-1");
+        assert!(db.load_queues().is_empty());
 
         assert!(db.load_settings().is_none());
         let settings = Settings::with_default_dir("/home/user/Downloads".to_string());

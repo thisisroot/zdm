@@ -16,28 +16,37 @@ export const CATEGORIES: Category[] = [
   { id: 'disc', label: 'Disc Images', glyph: 'ISO', color: 'var(--teal)' },
   { id: 'software', label: 'Software', glyph: 'APP', color: 'var(--blue)' },
   { id: 'image', label: 'Images', glyph: 'IMG', color: 'var(--rose)' },
+  { id: 'ebook', label: 'Ebooks', glyph: 'EPB', color: 'var(--success)' },
+  { id: 'font', label: 'Fonts', glyph: 'TTF', color: 'var(--progress)' },
+  { id: 'torrent', label: 'Torrents', glyph: 'TOR', color: 'var(--error)' },
+  { id: 'other', label: 'Other', glyph: 'OTH', color: 'var(--text-dim)' },
 ]
 
 const EXT_TO_CATEGORY: Record<string, string> = {
   iso: 'disc', img: 'disc', bin: 'disc', nrg: 'disc',
-  mp4: 'video', mkv: 'video', avi: 'video', mov: 'video', webm: 'video', flv: 'video',
-  mp3: 'audio', flac: 'audio', wav: 'audio', m4a: 'audio', ogg: 'audio', aac: 'audio',
+  mp4: 'video', mkv: 'video', avi: 'video', mov: 'video', webm: 'video', flv: 'video', wmv: 'video', m4v: 'video',
+  mp3: 'audio', flac: 'audio', wav: 'audio', m4a: 'audio', ogg: 'audio', aac: 'audio', opus: 'audio', wma: 'audio',
   zip: 'archive', rar: 'archive', '7z': 'archive', tar: 'archive', gz: 'archive', xz: 'archive', bz2: 'archive',
-  pdf: 'docs', doc: 'docs', docx: 'docs', epub: 'docs', txt: 'docs', md: 'docs',
+  pdf: 'docs', doc: 'docs', docx: 'docs', txt: 'docs', md: 'docs', rtf: 'docs', odt: 'docs',
+  xls: 'docs', xlsx: 'docs', ods: 'docs', ppt: 'docs', pptx: 'docs', odp: 'docs', csv: 'docs',
   exe: 'software', dmg: 'software', deb: 'software', rpm: 'software', appimage: 'software', msi: 'software', pkg: 'software',
-  jpg: 'image', jpeg: 'image', png: 'image', gif: 'image', webp: 'image', svg: 'image',
+  apk: 'software', appx: 'software',
+  jpg: 'image', jpeg: 'image', png: 'image', gif: 'image', webp: 'image', svg: 'image', bmp: 'image', heic: 'image',
+  epub: 'ebook', mobi: 'ebook', azw: 'ebook', azw3: 'ebook', fb2: 'ebook', cbz: 'ebook', cbr: 'ebook',
+  ttf: 'font', otf: 'font', woff: 'font', woff2: 'font', eot: 'font',
+  torrent: 'torrent',
 }
 
 export function detectCategory(name: string): string {
   const lower = name.toLowerCase()
   if (/\.(tar\.gz|tar\.xz|tar\.bz2)$/.test(lower)) return 'archive'
   const match = lower.match(/\.([a-z0-9]+)$/)
-  if (!match) return 'archive'
-  return EXT_TO_CATEGORY[match[1]] ?? 'archive'
+  if (!match) return 'other'
+  return EXT_TO_CATEGORY[match[1]] ?? 'other'
 }
 
 export function categoryById(id: string): Category {
-  return CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[2]
+  return CATEGORIES.find((c) => c.id === id) ?? CATEGORIES.find((c) => c.id === 'other')!
 }
 
 /** Display/category-detection only — the backend independently derives and

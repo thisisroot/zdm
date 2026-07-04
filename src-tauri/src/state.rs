@@ -72,6 +72,10 @@ impl Settings {
             ("disc", "Disc Images"),
             ("software", "Software"),
             ("image", "Images"),
+            ("ebook", "Ebooks"),
+            ("font", "Fonts"),
+            ("torrent", "Torrents"),
+            ("other", "Other"),
         ]
         .into_iter()
         .map(|(cat, folder)| (cat.to_string(), sub(folder)))

@@ -11,12 +11,14 @@ import { useDownloads } from './hooks/useDownloads'
 import { useHistory } from './hooks/useHistory'
 import { api } from './lib/api'
 import { matchesFilter, type DownloadRecord, type Filter } from './lib/types'
+import { CancelIcon, PauseIcon, PlayIcon } from './components/icons'
 
 export default function App() {
   const { downloads, queues, settings, loaded, refreshQueues, updateSettings } = useDownloads()
   const [filter, setFilter] = useState<Filter>({ kind: 'all' })
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
   const [addOpen, setAddOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
 
@@ -32,6 +34,24 @@ export default function App() {
     const q = search.trim().toLowerCase()
     return q ? filtered.filter((d) => d.name.toLowerCase().includes(q)) : filtered
   }, [allSorted, filter, search])
+
+  // checkedIds can outlive its row (e.g. after a removal) — always derive the
+  // working set from what's actually still in `list` rather than trusting the set directly.
+  const checkedList = useMemo(() => list.filter((d) => checkedIds.has(d.id)), [list, checkedIds])
+  const allChecked = list.length > 0 && checkedList.length === list.length
+
+  function toggleChecked(id: string) {
+    setCheckedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleCheckAll() {
+    setCheckedIds(allChecked ? new Set() : new Set(list.map((d) => d.id)))
+  }
 
   const activeDownloads = useMemo(() => allSorted.filter((d) => d.status === 'downloading'), [allSorted])
   const totalSpeed = activeDownloads.reduce((sum, d) => sum + d.speedBps, 0)
@@ -65,6 +85,30 @@ export default function App() {
   async function removeRecord(id: string) {
     await api.removeDownload(id, false)
     if (selectedId === id) setSelectedId(null)
+    setCheckedIds((prev) => {
+      if (!prev.has(id)) return prev
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+  }
+
+  async function bulkPause() {
+    await Promise.all(checkedList.filter((d) => d.status === 'downloading').map((d) => api.pauseDownload(d.id)))
+  }
+
+  async function bulkResume() {
+    await Promise.all(checkedList.filter((d) => d.status === 'paused').map((d) => api.resumeDownload(d.id)))
+  }
+
+  async function bulkRemove() {
+    await Promise.all(checkedList.map((d) => removeRecord(d.id)))
+  }
+
+  async function deleteQueue(queueId: string) {
+    await api.deleteQueue(queueId)
+    await refreshQueues()
+    if (filter.kind === 'queue' && filter.queueId === queueId) setFilter({ kind: 'all' })
   }
 
   if (!loaded || !settings) {
@@ -95,9 +139,31 @@ export default function App() {
       />
 
       <div className="body">
-        <Rail downloads={allSorted} queues={queues} filter={filter} onFilterChange={setFilter} onToggleQueue={toggleQueue} />
+        <Rail
+          downloads={allSorted}
+          queues={queues}
+          filter={filter}
+          onFilterChange={setFilter}
+          onToggleQueue={toggleQueue}
+          onDeleteQueue={deleteQueue}
+        />
 
         <main className="list-pane">
+          {list.length > 0 && (
+            <div className="list-toolbar">
+              <label className="check-all">
+                <input type="checkbox" checked={allChecked} onChange={toggleCheckAll} />
+                {checkedList.length > 0 ? `${checkedList.length} selected` : 'Select all'}
+              </label>
+              {checkedList.length > 0 && (
+                <div className="bulk-actions">
+                  <button className="btn btn-sm" onClick={bulkPause}><PauseIcon />Pause</button>
+                  <button className="btn btn-sm" onClick={bulkResume}><PlayIcon />Resume</button>
+                  <button className="btn btn-sm btn-danger" onClick={bulkRemove}><CancelIcon />Remove</button>
+                </div>
+              )}
+            </div>
+          )}
           {list.length === 0 ? (
             <div className="list-empty">No downloads match this filter.</div>
           ) : (
@@ -106,12 +172,14 @@ export default function App() {
                 key={record.id}
                 record={record}
                 selected={record.id === selectedId}
+                checked={checkedIds.has(record.id)}
                 queueName={queueNameFor(record)}
                 onSelect={() => setSelectedId(record.id)}
+                onToggleCheck={() => toggleChecked(record.id)}
                 onPause={() => api.pauseDownload(record.id)}
                 onResume={() => api.resumeDownload(record.id)}
                 onRetry={() => api.retryDownload(record.id)}
-                onCancel={() => api.cancelDownload(record.id)}
+                onRemove={() => removeRecord(record.id)}
                 onOpenFolder={() => openFolder(record)}
               />
             ))

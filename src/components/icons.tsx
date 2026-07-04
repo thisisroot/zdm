@@ -80,4 +80,21 @@ export const CategoryIcons: Record<string, (p: SVGProps<SVGSVGElement>) => React
       <rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="m5 17 4.5-5 3.5 4 2.5-3 4.5 4" />
     </svg>
   ),
+  ebook: (p) => (
+    <svg {...base} strokeWidth={1.8} {...p}>
+      <path d="M12 6c-1.8-1.3-4-2-6-2v14c2 0 4.2.7 6 2 1.8-1.3 4-2 6-2V4c-2 0-4.2.7-6 2Z" /><path d="M12 6v14" />
+    </svg>
+  ),
+  font: (p) => (
+    <svg {...base} strokeWidth={1.8} {...p}><path d="M6 19 11 5h2l5 14M7.5 14h9" /></svg>
+  ),
+  torrent: (p) => (
+    <svg {...base} strokeWidth={1.8} {...p}>
+      <circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3" />
+      <path d="M12 3v3.3M19.8 7.5l-2.9 1.7M19.8 16.5l-2.9-1.7M12 21v-3.3M4.2 16.5l2.9-1.7M4.2 7.5l2.9 1.7" />
+    </svg>
+  ),
+  other: (p) => (
+    <svg {...base} strokeWidth={1.8} {...p}><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5" /><path d="M10 14h4M10 17h4" /></svg>
+  ),
 }
