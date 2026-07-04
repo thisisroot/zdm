@@ -2,16 +2,35 @@ use std::collections::HashMap;
 use std::io::SeekFrom;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use futures_util::StreamExt;
 use reqwest::header::RANGE;
-use reqwest::Client;
+use reqwest::{Client, Response, StatusCode};
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 
 use crate::chunk::ByteRange;
 use crate::error::DownloadError;
+
+/// Classifies a non-success response: 429/5xx are worth retrying (with the
+/// server's own `Retry-After` if it gave one), everything else — 403, 404,
+/// etc. — won't resolve by trying again.
+fn classify_bad_status(resp: &Response) -> DownloadError {
+    let status = resp.status();
+    if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+        let retry_after = resp
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(Duration::from_secs);
+        DownloadError::Retryable { status, retry_after }
+    } else {
+        DownloadError::BadStatus(status)
+    }
+}
 
 /// Downloads one byte range and writes it at the matching offset in the
 /// (already fully-allocated) destination file.
@@ -39,7 +58,7 @@ pub async fn download_chunk(
         .send()
         .await?;
     if !resp.status().is_success() {
-        return Err(DownloadError::BadStatus(resp.status()));
+        return Err(classify_bad_status(&resp));
     }
 
     let mut file = OpenOptions::new().write(true).open(destination).await?;
@@ -68,7 +87,7 @@ pub async fn download_whole_file_sequential(
 ) -> Result<(), DownloadError> {
     let resp = client.get(url).send().await?;
     if !resp.status().is_success() {
-        return Err(DownloadError::BadStatus(resp.status()));
+        return Err(classify_bad_status(&resp));
     }
 
     let mut file = OpenOptions::new().write(true).create(true).truncate(true).open(destination).await?;

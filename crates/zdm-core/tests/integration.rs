@@ -19,6 +19,11 @@ struct ServerState {
     delay: Duration,
 }
 
+struct FlakyState {
+    data: Vec<u8>,
+    remaining_429s: std::sync::atomic::AtomicUsize,
+}
+
 /// Deterministic filler so the test can regenerate and compare without keeping
 /// a second in-memory copy alive across await points.
 fn make_bytes(len: usize) -> Vec<u8> {
@@ -70,6 +75,61 @@ async fn serve_unranged(State(state): State<Arc<ServerState>>) -> Response {
         .header(header::CONTENT_LENGTH, state.data.len())
         .body(Body::from(state.data.clone()))
         .unwrap()
+}
+
+/// Rate-limits real chunk fetches (any ranged request past the first byte)
+/// for a fixed number of requests, then serves normally — simulating a
+/// server that 429s under concurrent load. The initial probe (`HEAD`, or the
+/// `bytes=0-0` fallback range) is deliberately exempt so `start()` itself can
+/// still succeed; the throttling behavior under test is what happens once
+/// real chunk downloads are underway.
+async fn serve_flaky(headers: HeaderMap, State(state): State<Arc<FlakyState>>) -> Response {
+    let total = state.data.len() as u64;
+    let Some(range) = headers.get(header::RANGE).and_then(|v| v.to_str().ok()) else {
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_LENGTH, total)
+            .header(header::ACCEPT_RANGES, "bytes")
+            .body(Body::from(state.data.clone()))
+            .unwrap();
+    };
+    let Some((start, end)) = parse_range(range, total) else {
+        return Response::builder().status(StatusCode::BAD_REQUEST).body(Body::empty()).unwrap();
+    };
+    let is_probe = start == 0 && end == 0;
+
+    if !is_probe {
+        let prev = state.remaining_429s.fetch_update(std::sync::atomic::Ordering::SeqCst, std::sync::atomic::Ordering::SeqCst, |n| {
+            if n > 0 { Some(n - 1) } else { None }
+        });
+        if prev.is_ok() {
+            return Response::builder()
+                .status(StatusCode::TOO_MANY_REQUESTS)
+                .header(header::RETRY_AFTER, "0")
+                .body(Body::empty())
+                .unwrap();
+        }
+    }
+
+    let slice = state.data[start as usize..=end as usize].to_vec();
+    Response::builder()
+        .status(StatusCode::PARTIAL_CONTENT)
+        .header(header::CONTENT_RANGE, format!("bytes {start}-{end}/{total}"))
+        .header(header::CONTENT_LENGTH, slice.len())
+        .header(header::ACCEPT_RANGES, "bytes")
+        .body(Body::from(slice))
+        .unwrap()
+}
+
+async fn spawn_flaky_server(data: Vec<u8>, remaining_429s: usize) -> String {
+    let state = Arc::new(FlakyState { data, remaining_429s: std::sync::atomic::AtomicUsize::new(remaining_429s) });
+    let app = Router::new().route("/flaky.bin", get(serve_flaky)).with_state(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    format!("http://{addr}")
 }
 
 async fn spawn_server(data: Vec<u8>, delay: Duration) -> String {
@@ -204,4 +264,29 @@ async fn pausing_then_resuming_from_disk_finishes_without_corruption() {
     let downloaded = tokio::fs::read(&destination).await.unwrap();
     assert_eq!(downloaded, source, "resumed download must still reassemble to the exact source bytes");
     assert!(DownloadMeta::load(&destination).await.is_none());
+}
+
+#[tokio::test]
+async fn survives_rate_limiting_instead_of_failing_outright() {
+    let source = make_bytes(600_000);
+    // More 429s than any single chunk retry budget alone would tolerate if
+    // they all landed on one connection — only recoverable because failing
+    // chunks go back to a shared queue other (or the same, later) workers
+    // keep draining, backed by retry-with-backoff.
+    let base_url = spawn_flaky_server(source.clone(), 10).await;
+
+    let dir = tempfile::tempdir().unwrap();
+    let destination = dir.path().join("downloaded.bin");
+
+    let (engine, mut events) = DownloadEngine::new();
+    engine
+        .start(DownloadOptions { id: uuid::Uuid::new_v4(), url: format!("{base_url}/flaky.bin"), destination: destination.clone(), connections: 4 })
+        .await
+        .unwrap();
+
+    assert!(matches!(events.recv().await.unwrap(), DownloadEvent::Started { .. }));
+    wait_for_completion(&mut events).await;
+
+    let downloaded = tokio::fs::read(&destination).await.unwrap();
+    assert_eq!(downloaded, source, "must still reassemble correctly after recovering from rate limiting");
 }

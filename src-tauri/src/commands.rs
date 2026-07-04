@@ -4,12 +4,9 @@ use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
 use crate::batch::parse_batch_pattern;
+use crate::filename::filename_from_url;
 use crate::queue::{publish, try_promote_queue};
 use crate::state::{AppState, DownloadRecord, DownloadStatus, QueueInfo, Settings};
-
-fn filename_from_url(url: &str) -> String {
-    url.rsplit('/').find(|s| !s.is_empty()).unwrap_or("download").to_string()
-}
 
 fn slugify(input: &str) -> String {
     let mut out = String::new();

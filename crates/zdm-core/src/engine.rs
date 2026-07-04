@@ -1,11 +1,11 @@
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::Client;
-use tokio::sync::{mpsc, Mutex, Notify};
+use tokio::sync::{mpsc, Mutex, Notify, Semaphore};
 use uuid::Uuid;
 
 use crate::chunk::{plan_chunks, ByteRange};
@@ -19,6 +19,49 @@ use crate::worker::{download_chunk, download_whole_file_sequential};
 const RUNNING: u8 = 0;
 const PAUSED: u8 = 1;
 const CANCELED: u8 = 2;
+
+// Real download managers all identify as a browser — plenty of sites (CDNs,
+// anti-bot layers, even Wikipedia) 403 generic HTTP-library user agents.
+const USER_AGENT: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+const MAX_CHUNK_RETRIES: u32 = 6;
+
+/// Caps how many connections are actually allowed to run at once for a
+/// download, independent of how many worker tasks were spawned. Starts at
+/// the user's requested connection count (their preference, honored as long
+/// as the server tolerates it) and permanently drops by one — down to a
+/// floor of one — every time the server responds 429, so a download that
+/// gets rate-limited settles into whatever concurrency the server actually
+/// allows instead of failing outright.
+struct ConcurrencyGate {
+    semaphore: Semaphore,
+    remaining: AtomicUsize,
+}
+
+impl ConcurrencyGate {
+    fn new(connections: usize) -> Self {
+        let n = connections.max(1);
+        Self { semaphore: Semaphore::new(n), remaining: AtomicUsize::new(n) }
+    }
+
+    async fn acquire(&self) -> tokio::sync::SemaphorePermit<'_> {
+        self.semaphore.acquire().await.expect("semaphore is never closed")
+    }
+
+    fn throttle_down(&self) {
+        loop {
+            let current = self.remaining.load(Ordering::SeqCst);
+            if current <= 1 {
+                return;
+            }
+            if self.remaining.compare_exchange(current, current - 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+                self.semaphore.forget_permits(1);
+                return;
+            }
+        }
+    }
+}
 
 /// Pause/resume/cancel signaling shared between the engine and a task's workers,
 /// plus the live byte counter workers report into.
@@ -83,7 +126,10 @@ impl DownloadEngine {
     pub fn new() -> (Self, mpsc::UnboundedReceiver<DownloadEvent>) {
         let (events_tx, events_rx) = mpsc::unbounded_channel();
         let engine = Self {
-            client: Client::builder().build().expect("reqwest client builds with rustls-tls enabled"),
+            client: Client::builder()
+                .user_agent(USER_AGENT)
+                .build()
+                .expect("reqwest client builds with rustls-tls enabled"),
             tasks: Arc::new(Mutex::new(HashMap::new())),
             events_tx,
         };
@@ -226,8 +272,30 @@ impl DownloadEngine {
             }
         });
 
-        let result =
-            download_whole_file_sequential(&self.client, &meta.url, &meta.destination, &control.downloaded).await;
+        let mut attempt = 0u32;
+        let result = loop {
+            control.wait_if_paused().await?;
+            // A retry restarts the whole transfer (this path isn't
+            // range-resumable), so the byte counter needs to restart with it.
+            control.downloaded.store(0, Ordering::Relaxed);
+
+            match download_whole_file_sequential(&self.client, &meta.url, &meta.destination, &control.downloaded)
+                .await
+            {
+                Ok(()) => break Ok(()),
+                Err(err) => {
+                    let Some(retry_after) = err.retry_hint() else { break Err(err) };
+                    if attempt >= MAX_CHUNK_RETRIES {
+                        break Err(err);
+                    }
+                    attempt += 1;
+                    let backoff = retry_after
+                        .unwrap_or_else(|| Duration::from_millis(300 * 2u64.saturating_pow(attempt.min(6))))
+                        .min(Duration::from_secs(30));
+                    tokio::time::sleep(backoff).await;
+                }
+            }
+        };
         ticker.abort();
         result
     }
@@ -250,6 +318,8 @@ impl DownloadEngine {
         let completed = Arc::new(Mutex::new(already_done));
         let active_progress: Arc<Mutex<HashMap<usize, u64>>> = Arc::new(Mutex::new(HashMap::new()));
 
+        let gate = Arc::new(ConcurrencyGate::new(meta.connections));
+
         let mut worker_handles = Vec::with_capacity(meta.connections);
         for _ in 0..meta.connections {
             let client = self.client.clone();
@@ -259,16 +329,30 @@ impl DownloadEngine {
             let completed = completed.clone();
             let control = control.clone();
             let active_progress = active_progress.clone();
+            let gate = gate.clone();
 
             worker_handles.push(tokio::spawn(async move {
                 loop {
                     control.wait_if_paused().await?;
                     let next = queue.lock().await.pop_front();
                     let Some((index, range)) = next else { break };
-                    active_progress.lock().await.insert(index, 0);
-                    let result =
-                        download_chunk(&client, &url, &destination, index, range, &control.downloaded, &active_progress)
-                            .await;
+
+                    // Held for every retry of this chunk — throttling down
+                    // shrinks how many of these can be held at once, which is
+                    // exactly "fewer concurrent connections" from the server's
+                    // point of view.
+                    let _permit = gate.acquire().await;
+                    let result = download_chunk_with_retry(
+                        &client,
+                        &url,
+                        &destination,
+                        index,
+                        range,
+                        &control,
+                        &active_progress,
+                        &gate,
+                    )
+                    .await;
                     active_progress.lock().await.remove(&index);
                     result?;
                     completed.lock().await.insert(index);
@@ -333,6 +417,49 @@ impl DownloadEngine {
         let control = tasks.get(&id).ok_or(DownloadError::NotFound(id))?;
         control.cancel();
         Ok(())
+    }
+}
+
+/// Retries a chunk on transient failures (429, 5xx, connection resets) with
+/// exponential backoff, honoring the server's own `Retry-After` when it gives
+/// one. A 429 also permanently shrinks this download's concurrency ceiling —
+/// the server is telling us its real capacity, which takes priority over
+/// whatever the user asked for. Non-retryable errors (403, 404, cancellation)
+/// propagate immediately.
+#[allow(clippy::too_many_arguments)]
+async fn download_chunk_with_retry(
+    client: &Client,
+    url: &str,
+    destination: &std::path::Path,
+    chunk_index: usize,
+    range: ByteRange,
+    control: &TaskControl,
+    active_progress: &Mutex<HashMap<usize, u64>>,
+    gate: &ConcurrencyGate,
+) -> Result<(), DownloadError> {
+    let mut attempt = 0u32;
+    loop {
+        control.wait_if_paused().await?;
+        active_progress.lock().await.insert(chunk_index, 0);
+
+        match download_chunk(client, url, destination, chunk_index, range, &control.downloaded, active_progress).await
+        {
+            Ok(()) => return Ok(()),
+            Err(err) => {
+                let Some(retry_after) = err.retry_hint() else { return Err(err) };
+                if attempt >= MAX_CHUNK_RETRIES {
+                    return Err(err);
+                }
+                if err.is_rate_limited() {
+                    gate.throttle_down();
+                }
+                attempt += 1;
+                let backoff = retry_after
+                    .unwrap_or_else(|| Duration::from_millis(300 * 2u64.saturating_pow(attempt.min(6))))
+                    .min(Duration::from_secs(30));
+                tokio::time::sleep(backoff).await;
+            }
+        }
     }
 }
 

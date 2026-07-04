@@ -40,9 +40,21 @@ export function categoryById(id: string): Category {
   return CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[2]
 }
 
+/** Display/category-detection only — the backend independently derives and
+ * sanitizes the real filename it writes to disk. */
 export function filenameFromUrl(url: string): string {
   const segments = url.split('/').filter(Boolean)
-  return segments[segments.length - 1] || 'download'
+  const last = segments[segments.length - 1] || 'download'
+  // Strip query/fragment before anything else — leaving them in breaks the
+  // trailing-extension match below (e.g. `file.rar?12345` has no extension
+  // by that regex), which silently misdetects category on any URL with a
+  // query string.
+  const withoutQuery = last.split(/[?#]/)[0] || 'download'
+  try {
+    return decodeURIComponent(withoutQuery)
+  } catch {
+    return withoutQuery
+  }
 }
 
 export function formatBytes(bytes: number | null): string {

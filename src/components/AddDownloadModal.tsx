@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { readText } from '@tauri-apps/plugin-clipboard-manager'
 import { CATEGORIES, detectCategory, filenameFromUrl, parseBatchPatternPreview } from '../lib/categories'
 import type { QueueInfo, Settings } from '../lib/types'
 import { DirectoryField } from './DirectoryField'
@@ -20,35 +21,75 @@ interface AddDownloadModalProps {
 
 type Mode = 'single' | 'batch'
 
+function isDownloadableUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle, onAddBatch }: AddDownloadModalProps) {
   const [mode, setMode] = useState<Mode>('single')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const [url, setUrl] = useState('https://mirror.example.org/releases/zdm-companion-2.1.tar.xz')
-  const [saveDir, setSaveDir] = useState(settings.categoryDirs['archive'] ?? settings.defaultDir)
+  const [url, setUrl] = useState('')
+  const [saveDir, setSaveDir] = useState(settings.defaultDir)
   const [connections, setConnections] = useState(settings.defaultConnections)
-  const [category, setCategory] = useState('archive')
+  const [category, setCategory] = useState('')
   const [categoryTouched, setCategoryTouched] = useState(false)
   const [queueId, setQueueId] = useState(queues[0]?.id ?? 'default')
 
-  const [batchUrl, setBatchUrl] = useState('https://mirror.example.org/archive/season-pack/part[01-12].mkv')
-  const [batchSaveDir, setBatchSaveDir] = useState(settings.categoryDirs['video'] ?? settings.defaultDir)
+  const [batchUrl, setBatchUrl] = useState('')
+  const [batchSaveDir, setBatchSaveDir] = useState(settings.defaultDir)
   const [batchConnections, setBatchConnections] = useState(settings.defaultConnections)
-  const [batchCategory, setBatchCategory] = useState('video')
-  const [batchQueueName, setBatchQueueName] = useState('Season Pack: part[01-12].mkv')
+  const [batchCategory, setBatchCategory] = useState('')
+  const [batchQueueName, setBatchQueueName] = useState('')
   const [batchQueueTouched, setBatchQueueTouched] = useState(false)
 
+  // Reset to a blank slate every time the modal opens, then try to prefill
+  // the URL from the clipboard — only if it actually looks like a download
+  // link. Anything else (or an empty/unreadable clipboard) leaves the field
+  // blank rather than showing a fake-looking example value.
   useEffect(() => {
     if (!open) return
     setError(null)
     setBusy(false)
+    setCategoryTouched(false)
+    setBatchQueueTouched(false)
+    setCategory('')
+    setBatchCategory('')
+    setSaveDir(settings.defaultDir)
+    setBatchSaveDir(settings.defaultDir)
+    setBatchQueueName('')
+    setUrl('')
+    setBatchUrl('')
+
+    let cancelled = false
+    readText()
+      .then((text) => {
+        if (cancelled) return
+        const trimmed = text.trim()
+        if (isDownloadableUrl(trimmed)) {
+          setUrl(trimmed)
+          setBatchUrl(trimmed)
+        }
+      })
+      .catch(() => {
+        // No clipboard access (permission denied, empty clipboard, etc.) —
+        // leaving the fields blank is the correct fallback either way.
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   useEffect(() => {
-    if (categoryTouched) return
-    const name = filenameFromUrl(url)
-    const detected = detectCategory(name)
+    if (categoryTouched || !url.trim()) return
+    const detected = detectCategory(filenameFromUrl(url))
     setCategory(detected)
     setSaveDir(settings.categoryDirs[detected] ?? settings.defaultDir)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -67,16 +108,30 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
   if (!open) return null
 
   async function submit() {
-    setBusy(true)
     setError(null)
+    if (mode === 'single' && !url.trim()) {
+      setError('Enter a URL to download')
+      return
+    }
+    if (mode === 'batch' && batchUrls.length === 0) {
+      setError('Add a range like [01-99] to the URL pattern above')
+      return
+    }
+
+    setBusy(true)
     try {
       if (mode === 'single') {
         let queue = queueId
         if (queueId === '__new__') queue = `New Queue ${queues.length + 1}`
-        await onAddSingle({ url, destinationDir: saveDir, connections, category, queue })
+        await onAddSingle({ url, destinationDir: saveDir, connections, category: category || 'archive', queue })
       } else {
-        if (batchUrls.length === 0) throw new Error('Add a range like [01-99] to the URL pattern above')
-        await onAddBatch({ urlPattern: batchUrl, destinationDir: batchSaveDir, connections: batchConnections, category: batchCategory, queueName: batchQueueName })
+        await onAddBatch({
+          urlPattern: batchUrl,
+          destinationDir: batchSaveDir,
+          connections: batchConnections,
+          category: batchCategory || 'archive',
+          queueName: batchQueueName || batchUrl,
+        })
       }
       onClose()
     } catch (e) {
@@ -102,7 +157,7 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
             <>
               <div className="field">
                 <label>URL</label>
-                <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} />
+                <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/file.zip" autoFocus />
               </div>
               <DirectoryField label="Download folder" value={saveDir} onChange={setSaveDir} />
               <div className="row2">
@@ -144,7 +199,7 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
             <>
               <div className="field">
                 <label>URL pattern</label>
-                <input type="text" value={batchUrl} onChange={(e) => setBatchUrl(e.target.value)} />
+                <input type="text" value={batchUrl} onChange={(e) => setBatchUrl(e.target.value)} placeholder="https://example.com/part[01-99].zip" autoFocus />
                 <div className="hint">
                   Wrap a numbered range in brackets — <code>part[01-99].zip</code> generates 99 files with matching zero-padding.
                 </div>
@@ -160,6 +215,7 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
                       setBatchQueueTouched(true)
                       setBatchQueueName(e.target.value)
                     }}
+                    placeholder="My batch queue"
                   />
                 </div>
                 <div className="field" style={{ maxWidth: 150 }}>

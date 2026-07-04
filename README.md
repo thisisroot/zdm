@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src=".github/assets/logo.png" width="160" height="160" alt="ZDM logo">
+
 # ZDM
 
 **A fast, segmented download manager for Windows, macOS, and Linux.**

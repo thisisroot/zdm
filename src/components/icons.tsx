@@ -42,6 +42,24 @@ export const LogoIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base} {...p}><path d="M12 3v12m0 0-4-4m4 4 4-4M4 19h16" /></svg>
 )
 
+const winBase: SVGProps<SVGSVGElement> = { viewBox: '0 0 10 10', fill: 'none', stroke: 'currentColor', strokeWidth: 1 }
+
+export const WinMinimizeIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...winBase} {...p}><path d="M1.5 5h7" /></svg>
+)
+export const WinMaximizeIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...winBase} {...p}><rect x="1.5" y="1.5" width="7" height="7" /></svg>
+)
+export const WinRestoreIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...winBase} {...p}>
+    <rect x="3" y="1.5" width="5.5" height="5.5" />
+    <path d="M1.5 3.5v5h5V7" />
+  </svg>
+)
+export const WinCloseIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...winBase} {...p}><path d="M1.5 1.5l7 7m0-7-7 7" /></svg>
+)
+
 export const CategoryIcons: Record<string, (p: SVGProps<SVGSVGElement>) => ReactElement> = {
   disc: (p) => <svg {...base} strokeWidth={1.8} {...p}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="2.4" /></svg>,
   video: (p) => <svg {...base} strokeWidth={1.8} {...p}><rect x="3" y="5" width="14" height="14" rx="2" /><path d="m21 8-4 3 4 3z" /></svg>,
