@@ -1,0 +1,19 @@
+[package]
+name = "zdm-core"
+version = "0.1.0"
+edition = "2021"
+description = "ZDM's segmented download engine: chunked HTTP range fetching, resume, throttling."
+
+[dependencies]
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+futures-util = { workspace = true }
+
+[dev-dependencies]
+axum = "0.8"
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net"] }
+tempfile = "3"
