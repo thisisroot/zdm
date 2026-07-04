@@ -20,6 +20,7 @@ pub enum DownloadEvent {
     Started { id: Uuid, total_size: Option<u64>, resumable: bool },
     Progress { id: Uuid, downloaded: u64, total_size: Option<u64>, speed_bps: f64, active_chunks: Vec<ActiveChunk> },
     Paused { id: Uuid },
+    Resumed { id: Uuid },
     Completed { id: Uuid },
     Canceled { id: Uuid },
     Failed { id: Uuid, error: String },

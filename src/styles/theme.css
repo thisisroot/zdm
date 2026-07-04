@@ -206,6 +206,7 @@ button{ font-family:inherit; }
 
 .list-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:2px 4px 4px; }
 .check-all{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-dim); cursor:pointer; user-select:none; }
+.toolbar-right{ display:flex; align-items:center; gap:10px; }
 .bulk-actions{ display:flex; gap:6px; }
 .bulk-actions .btn svg{ width:12px; height:12px; }
 .btn-danger{ color:var(--error); border-color:var(--error-soft); }
@@ -221,6 +222,8 @@ button{ font-family:inherit; }
 .row:hover{ border-color:var(--border); }
 .row.selected{ border-color:var(--accent); background:var(--surface-2); box-shadow:0 0 0 1px var(--accent) inset; }
 .row.checked{ background:var(--accent-soft); }
+.row-drag[draggable="true"] .row{ cursor:grab; }
+.row-drag.dragging .row{ opacity:.4; }
 .row-top{ display:flex; align-items:center; gap:12px; }
 .row-check{ flex:none; width:15px; height:15px; margin:0; accent-color:var(--accent); cursor:pointer; }
 .filetype{ width:34px; height:34px; border-radius:8px; flex:none; display:flex; align-items:center; justify-content:center; color:var(--accent-ink); font-family:var(--font-display); font-weight:700; font-size:10.5px; letter-spacing:.02em; }

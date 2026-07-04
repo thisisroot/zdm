@@ -73,6 +73,20 @@ pub async fn choose_directory(app: AppHandle) -> Result<Option<String>, String> 
     Ok(picked.map(|p| p.to_string()))
 }
 
+/// Checks whether a download's computed filename already exists in the
+/// destination folder, so the frontend can offer Replace/Rename before the
+/// transfer starts rather than silently overwriting or erroring mid-flight.
+/// `filename` lets the frontend re-check a user-typed alternate name too.
+#[tauri::command]
+pub async fn check_conflict(destination_dir: String, url: String, filename: Option<String>) -> Result<Option<String>, String> {
+    let name = match filename {
+        Some(f) => crate::filename::sanitize(&f),
+        None => filename_from_url(&url),
+    };
+    let path = PathBuf::from(&destination_dir).join(&name);
+    Ok(if tokio::fs::try_exists(&path).await.unwrap_or(false) { Some(name) } else { None })
+}
+
 #[tauri::command]
 pub async fn add_download(
     state: State<'_, AppState>,
@@ -82,9 +96,13 @@ pub async fn add_download(
     connections: usize,
     category: String,
     queue: String,
+    filename: Option<String>,
 ) -> Result<String, String> {
     let id = Uuid::new_v4();
-    let name = filename_from_url(&url);
+    let name = match filename {
+        Some(f) => crate::filename::sanitize(&f),
+        None => filename_from_url(&url),
+    };
     let destination = PathBuf::from(&destination_dir).join(&name);
     let seq = state.next_seq();
 
@@ -224,6 +242,32 @@ pub async fn cancel_download(state: State<'_, AppState>, app: AppHandle, id: Str
     }
 }
 
+/// Applies a drag-and-drop reorder: `ids` is the full new order, so each
+/// entry's index becomes its new `seq`. Only rows whose seq actually changed
+/// are republished, to avoid emitting a flood of no-op updates.
+#[tauri::command]
+pub async fn reorder_downloads(state: State<'_, AppState>, app: AppHandle, ids: Vec<String>) -> Result<(), String> {
+    let mut changed = Vec::new();
+    {
+        let mut records = state.records.lock().await;
+        for (i, id_str) in ids.iter().enumerate() {
+            let id = Uuid::parse_str(id_str).map_err(|e| e.to_string())?;
+            let seq = i as u64;
+            if let Some(r) = records.get_mut(&id) {
+                if r.seq != seq {
+                    r.seq = seq;
+                    changed.push(r.clone());
+                }
+            }
+        }
+    }
+    state.set_seq_floor(ids.len() as u64);
+    for record in &changed {
+        publish(&app, &state, record);
+    }
+    Ok(())
+}
+
 /// Deleting a queue never deletes its downloads — members are reassigned to
 /// the default queue so nothing silently disappears from the list.
 #[tauri::command]
@@ -261,11 +305,17 @@ pub async fn remove_download(state: State<'_, AppState>, app: AppHandle, id: Str
     state.db.delete_download(id);
     let _ = app.emit("download-removed", id.to_string());
     if delete_file {
-        if let Some(record) = record {
+        if let Some(record) = &record {
             let path = PathBuf::from(&record.destination);
             let _ = tokio::fs::remove_file(&path).await;
             zdm_core::DownloadMeta::delete(&path).await;
         }
+    }
+    // The removed download may have been occupying an active slot or sitting
+    // queued ahead of others — either way the scheduler needs a nudge, since
+    // nothing else triggers it on this path.
+    if record.is_some() {
+        try_promote_queue(&app).await;
     }
     Ok(())
 }

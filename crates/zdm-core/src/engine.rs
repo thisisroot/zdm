@@ -409,6 +409,7 @@ impl DownloadEngine {
         let tasks = self.tasks.lock().await;
         let control = tasks.get(&id).ok_or(DownloadError::NotFound(id))?;
         control.resume();
+        let _ = self.events_tx.send(DownloadEvent::Resumed { id });
         Ok(())
     }
 

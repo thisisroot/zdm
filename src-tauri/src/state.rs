@@ -81,7 +81,7 @@ impl Settings {
         .map(|(cat, folder)| (cat.to_string(), sub(folder)))
         .collect();
 
-        Self { max_simultaneous_downloads: 3, default_connections: 8, notify_on_completion: true, category_dirs, default_dir }
+        Self { max_simultaneous_downloads: 1, default_connections: 8, notify_on_completion: true, category_dirs, default_dir }
     }
 }
 
@@ -122,5 +122,11 @@ impl AppState {
 
     pub fn next_seq(&self) -> u64 {
         self.seq_counter.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// After a full resequence (drag-and-drop reorder), later additions must
+    /// still land after every existing row instead of colliding with one.
+    pub fn set_seq_floor(&self, floor: u64) {
+        self.seq_counter.fetch_max(floor, Ordering::Relaxed);
     }
 }

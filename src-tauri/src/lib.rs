@@ -5,7 +5,9 @@ mod filename;
 mod queue;
 mod state;
 
-use tauri::Manager;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
+use tauri::{Manager, WindowEvent};
 use zdm_core::DownloadEngine;
 
 use db::Db;
@@ -48,6 +50,53 @@ pub fn run() {
                 queue::try_promote_queue(&app_handle).await;
             });
 
+            // Closing the window hides it to the tray instead of quitting —
+            // downloads keep running in the background. "Quit" on the tray
+            // menu is the only thing that actually ends the process.
+            if let Some(window) = app.get_webview_window("main") {
+                let window_for_close = window.clone();
+                window.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = window_for_close.hide();
+                    }
+                });
+            }
+
+            let show_item = MenuItem::with_id(app, "show", "Show ZDM", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+            TrayIconBuilder::new()
+                .icon(app.default_window_icon().cloned().expect("app icon is embedded via tauri.conf.json"))
+                .menu(&tray_menu)
+                .tooltip("ZDM Download Manager")
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "quit" => app.exit(0),
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let tauri::tray::TrayIconEvent::Click {
+                        button: tauri::tray::MouseButton::Left,
+                        button_state: tauri::tray::MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        if let Some(window) = tray.app_handle().get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -56,6 +105,7 @@ pub fn run() {
             commands::get_settings,
             commands::update_settings,
             commands::choose_directory,
+            commands::check_conflict,
             commands::add_download,
             commands::add_batch,
             commands::pause_download,
@@ -64,6 +114,7 @@ pub fn run() {
             commands::cancel_download,
             commands::remove_download,
             commands::delete_queue,
+            commands::reorder_downloads,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

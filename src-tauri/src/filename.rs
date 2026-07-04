@@ -41,7 +41,7 @@ const RESERVED_WINDOWS_NAMES: &[&str] =
 
 const MAX_NAME_LEN: usize = 180;
 
-fn sanitize(input: &str) -> String {
+pub fn sanitize(input: &str) -> String {
     let replaced: String =
         input.chars().map(|c| if c.is_control() || "<>:\"/\\|?*".contains(c) { '_' } else { c }).collect();
 

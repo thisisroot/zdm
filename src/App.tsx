@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { revealItemInDir } from '@tauri-apps/plugin-opener'
+import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener'
 import { TitleBar } from './components/TitleBar'
 import { TopBar } from './components/TopBar'
 import { Rail } from './components/Rail'
@@ -19,6 +19,7 @@ export default function App() {
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
+  const [dragId, setDragId] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
 
@@ -53,6 +54,21 @@ export default function App() {
     setCheckedIds(allChecked ? new Set() : new Set(list.map((d) => d.id)))
   }
 
+  // Reordering resequences the entire download set, so it only makes sense
+  // against the unfiltered, unsearched view where "the list" and "everything" are the same thing.
+  const canReorder = filter.kind === 'all' && !search.trim()
+
+  function handleDrop(targetId: string) {
+    if (!dragId || dragId === targetId) return
+    const ids = list.map((d) => d.id)
+    const from = ids.indexOf(dragId)
+    const to = ids.indexOf(targetId)
+    if (from === -1 || to === -1) return
+    ids.splice(to, 0, ids.splice(from, 1)[0])
+    api.reorderDownloads(ids)
+    setDragId(null)
+  }
+
   const activeDownloads = useMemo(() => allSorted.filter((d) => d.status === 'downloading'), [allSorted])
   const totalSpeed = activeDownloads.reduce((sum, d) => sum + d.speedBps, 0)
   const totalConnections = activeDownloads.reduce((sum, d) => sum + d.connections, 0)
@@ -82,8 +98,17 @@ export default function App() {
     await revealItemInDir(record.destination)
   }
 
+  async function openFile(record: DownloadRecord) {
+    await openPath(record.destination)
+  }
+
+  // Anything short of a finished download has no standalone value as a partial
+  // file, so removing it also cleans up the partial bytes it already wrote —
+  // only a completed download's file is worth preserving on removal.
   async function removeRecord(id: string) {
-    await api.removeDownload(id, false)
+    const record = downloads[id]
+    const deleteFile = record ? record.status !== 'completed' : false
+    await api.removeDownload(id, deleteFile)
     if (selectedId === id) setSelectedId(null)
     setCheckedIds((prev) => {
       if (!prev.has(id)) return prev
@@ -103,6 +128,23 @@ export default function App() {
 
   async function bulkRemove() {
     await Promise.all(checkedList.map((d) => removeRecord(d.id)))
+  }
+
+  const finishedList = useMemo(() => list.filter((d) => d.status === 'completed' || d.status === 'failed' || d.status === 'canceled'), [list])
+
+  // Unlike per-row remove, "delete files" here is an explicit, all-or-nothing
+  // choice the user made for this action — it applies even to completed downloads.
+  async function clearFinished(deleteFiles: boolean) {
+    if (finishedList.length === 0) return
+    if (deleteFiles && !window.confirm(`Remove ${finishedList.length} download(s) from the list and delete their files from disk?`)) return
+    const ids = finishedList.map((d) => d.id)
+    await Promise.all(ids.map((id) => api.removeDownload(id, deleteFiles)))
+    setCheckedIds((prev) => {
+      const next = new Set(prev)
+      ids.forEach((id) => next.delete(id))
+      return next
+    })
+    if (selectedId && ids.includes(selectedId)) setSelectedId(null)
   }
 
   async function deleteQueue(queueId: string) {
@@ -155,33 +197,51 @@ export default function App() {
                 <input type="checkbox" checked={allChecked} onChange={toggleCheckAll} />
                 {checkedList.length > 0 ? `${checkedList.length} selected` : 'Select all'}
               </label>
-              {checkedList.length > 0 && (
-                <div className="bulk-actions">
-                  <button className="btn btn-sm" onClick={bulkPause}><PauseIcon />Pause</button>
-                  <button className="btn btn-sm" onClick={bulkResume}><PlayIcon />Resume</button>
-                  <button className="btn btn-sm btn-danger" onClick={bulkRemove}><CancelIcon />Remove</button>
-                </div>
-              )}
+              <div className="toolbar-right">
+                {checkedList.length > 0 && (
+                  <div className="bulk-actions">
+                    <button className="btn btn-sm" onClick={bulkPause}><PauseIcon />Pause</button>
+                    <button className="btn btn-sm" onClick={bulkResume}><PlayIcon />Resume</button>
+                    <button className="btn btn-sm btn-danger" onClick={bulkRemove}><CancelIcon />Remove</button>
+                  </div>
+                )}
+                {finishedList.length > 0 && (
+                  <div className="bulk-actions">
+                    <button className="btn btn-sm" onClick={() => clearFinished(false)}>Clear finished</button>
+                    <button className="btn btn-sm btn-danger" onClick={() => clearFinished(true)}>Clear + delete files</button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
           {list.length === 0 ? (
             <div className="list-empty">No downloads match this filter.</div>
           ) : (
             list.map((record) => (
-              <DownloadRow
+              <div
                 key={record.id}
-                record={record}
-                selected={record.id === selectedId}
-                checked={checkedIds.has(record.id)}
-                queueName={queueNameFor(record)}
-                onSelect={() => setSelectedId(record.id)}
-                onToggleCheck={() => toggleChecked(record.id)}
-                onPause={() => api.pauseDownload(record.id)}
-                onResume={() => api.resumeDownload(record.id)}
-                onRetry={() => api.retryDownload(record.id)}
-                onRemove={() => removeRecord(record.id)}
-                onOpenFolder={() => openFolder(record)}
-              />
+                className={`row-drag${dragId === record.id ? ' dragging' : ''}`}
+                draggable={canReorder}
+                onDragStart={() => setDragId(record.id)}
+                onDragEnd={() => setDragId(null)}
+                onDragOver={(e) => canReorder && e.preventDefault()}
+                onDrop={() => canReorder && handleDrop(record.id)}
+              >
+                <DownloadRow
+                  record={record}
+                  selected={record.id === selectedId}
+                  checked={checkedIds.has(record.id)}
+                  queueName={queueNameFor(record)}
+                  onSelect={() => setSelectedId(record.id)}
+                  onToggleCheck={() => toggleChecked(record.id)}
+                  onPause={() => api.pauseDownload(record.id)}
+                  onResume={() => api.resumeDownload(record.id)}
+                  onRetry={() => api.retryDownload(record.id)}
+                  onRemove={() => removeRecord(record.id)}
+                  onOpenFolder={() => openFolder(record)}
+                  onOpenFile={() => openFile(record)}
+                />
+              </div>
             ))
           )}
         </main>

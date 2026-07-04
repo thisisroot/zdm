@@ -15,6 +15,7 @@ interface DownloadRowProps {
   onRetry: () => void
   onRemove: () => void
   onOpenFolder: () => void
+  onOpenFile: () => void
 }
 
 export function DownloadRow({
@@ -29,13 +30,18 @@ export function DownloadRow({
   onRetry,
   onRemove,
   onOpenFolder,
+  onOpenFile,
 }: DownloadRowProps) {
   const cat = categoryById(record.category)
   const connectionsLabel =
     record.status === 'failed' ? 'connection reset · retry available' : `${record.connections} connections · ${pct(record)}%`
 
   return (
-    <div className={`row${selected ? ' selected' : ''}${checked ? ' checked' : ''}`} onClick={onSelect}>
+    <div
+      className={`row${selected ? ' selected' : ''}${checked ? ' checked' : ''}`}
+      onClick={onSelect}
+      onDoubleClick={() => record.status === 'completed' && onOpenFile()}
+    >
       <div className="row-top">
         <input
           type="checkbox"

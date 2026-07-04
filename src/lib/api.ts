@@ -10,8 +10,11 @@ export const api = {
   updateSettings: (settings: Settings) => invoke<void>('update_settings', { settings }),
   chooseDirectory: () => invoke<string | null>('choose_directory'),
 
-  addDownload: (args: { url: string; destinationDir: string; connections: number; category: string; queue: string }) =>
+  addDownload: (args: { url: string; destinationDir: string; connections: number; category: string; queue: string; filename?: string }) =>
     invoke<string>('add_download', args),
+
+  checkConflict: (destinationDir: string, url: string, filename?: string) =>
+    invoke<string | null>('check_conflict', { destinationDir, url, filename }),
 
   addBatch: (args: {
     urlPattern: string
@@ -27,4 +30,5 @@ export const api = {
   cancelDownload: (id: string) => invoke<void>('cancel_download', { id }),
   removeDownload: (id: string, deleteFile: boolean) => invoke<void>('remove_download', { id, deleteFile }),
   deleteQueue: (id: string) => invoke<void>('delete_queue', { id }),
+  reorderDownloads: (ids: string[]) => invoke<void>('reorder_downloads', { ids }),
 }

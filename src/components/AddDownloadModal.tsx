@@ -1,15 +1,24 @@
 import { useEffect, useState } from 'react'
 import { readText } from '@tauri-apps/plugin-clipboard-manager'
 import { CATEGORIES, detectCategory, filenameFromUrl, parseBatchPatternPreview } from '../lib/categories'
+import { api } from '../lib/api'
 import type { QueueInfo, Settings } from '../lib/types'
 import { DirectoryField } from './DirectoryField'
+import { ConflictModal } from './ConflictModal'
 
 interface AddDownloadModalProps {
   open: boolean
   settings: Settings
   queues: QueueInfo[]
   onClose: () => void
-  onAddSingle: (args: { url: string; destinationDir: string; connections: number; category: string; queue: string }) => Promise<void>
+  onAddSingle: (args: {
+    url: string
+    destinationDir: string
+    connections: number
+    category: string
+    queue: string
+    filename?: string
+  }) => Promise<void>
   onAddBatch: (args: {
     urlPattern: string
     destinationDir: string
@@ -49,6 +58,8 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
   const [batchQueueName, setBatchQueueName] = useState('')
   const [batchQueueTouched, setBatchQueueTouched] = useState(false)
 
+  const [conflict, setConflict] = useState<{ fileName: string; error: string | null } | null>(null)
+
   // Reset to a blank slate every time the modal opens, then try to prefill
   // the URL from the clipboard — only if it actually looks like a download
   // link. Anything else (or an empty/unreadable clipboard) leaves the field
@@ -57,6 +68,7 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
     if (!open) return
     setError(null)
     setBusy(false)
+    setConflict(null)
     setCategoryTouched(false)
     setBatchQueueTouched(false)
     setCategory('')
@@ -118,12 +130,25 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
       return
     }
 
+    // Batch downloads generate their own numbered filenames, so a name clash
+    // there is vanishingly unlikely — conflict checking only applies to single URLs.
+    if (mode === 'single') {
+      const existing = await api.checkConflict(saveDir, url)
+      if (existing) {
+        setConflict({ fileName: existing, error: null })
+        return
+      }
+    }
+    await doSubmit()
+  }
+
+  async function doSubmit(filenameOverride?: string) {
     setBusy(true)
     try {
       if (mode === 'single') {
         let queue = queueId
         if (queueId === '__new__') queue = `New Queue ${queues.length + 1}`
-        await onAddSingle({ url, destinationDir: saveDir, connections, category: category || 'other', queue })
+        await onAddSingle({ url, destinationDir: saveDir, connections, category: category || 'other', queue, filename: filenameOverride })
       } else {
         await onAddBatch({
           urlPattern: batchUrl,
@@ -139,6 +164,16 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
     } finally {
       setBusy(false)
     }
+  }
+
+  async function handleRename(newName: string) {
+    const stillConflicts = await api.checkConflict(saveDir, url, newName)
+    if (stillConflicts) {
+      setConflict({ fileName: stillConflicts, error: 'That name also exists — try another.' })
+      return
+    }
+    setConflict(null)
+    await doSubmit(newName)
   }
 
   return (
@@ -267,6 +302,18 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
           </button>
         </div>
       </div>
+
+      <ConflictModal
+        open={!!conflict}
+        fileName={conflict?.fileName ?? ''}
+        error={conflict?.error ?? null}
+        onCancel={() => setConflict(null)}
+        onReplace={() => {
+          setConflict(null)
+          doSubmit()
+        }}
+        onRename={handleRename}
+      />
     </div>
   )
 }

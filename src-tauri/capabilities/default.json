@@ -14,6 +14,7 @@
     "core:window:allow-is-maximized",
     "opener:default",
     "opener:allow-reveal-item-in-dir",
+    "opener:allow-open-path",
     "dialog:default",
     "notification:default",
     "clipboard-manager:allow-read-text"

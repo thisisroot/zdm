@@ -89,6 +89,7 @@ fn event_id(event: &DownloadEvent) -> uuid::Uuid {
         DownloadEvent::Started { id, .. }
         | DownloadEvent::Progress { id, .. }
         | DownloadEvent::Paused { id }
+        | DownloadEvent::Resumed { id }
         | DownloadEvent::Completed { id }
         | DownloadEvent::Canceled { id }
         | DownloadEvent::Failed { id, .. } => *id,
@@ -124,6 +125,9 @@ pub fn spawn_event_forwarder(app: AppHandle, mut events_rx: tokio::sync::mpsc::U
                         record.speed_bps = 0.0;
                         record.active_chunks.clear();
                         frees_a_slot = true;
+                    }
+                    DownloadEvent::Resumed { .. } => {
+                        record.status = DownloadStatus::Downloading;
                     }
                     DownloadEvent::Completed { .. } => {
                         record.status = DownloadStatus::Completed;
