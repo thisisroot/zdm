@@ -20,12 +20,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # tauri.conf.json's bundle.targets is "all", which on Linux means three
+      # separate installer formats from this one runner: .deb (Debian/Ubuntu),
+      # .rpm (Fedora/RHEL/openSUSE), and an AppImage (runs on nearly any distro
+      # without a package manager at all). rpm and libfuse2 aren't part of the
+      # base image, and without libfuse2 the AppImage step fails outright on
+      # ubuntu-22.04+ runners since they dropped FUSE2 by default.
       - name: Install Linux system dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
-            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev pkg-config libdbus-1-dev
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev pkg-config libdbus-1-dev \
+            rpm libfuse2
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
