@@ -2,9 +2,9 @@
 name = "zdm"
 version = "0.1.0"
 description = "ZDM — a fast, segmented download manager"
-authors = ["you"]
-license = ""
-repository = ""
+authors = ["thisisroot"]
+license = "MIT"
+repository = "https://github.com/thisisroot/zdm"
 edition = "2021"
 rust-version = "1.77.2"
 

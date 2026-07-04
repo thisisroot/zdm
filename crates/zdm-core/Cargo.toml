@@ -2,6 +2,7 @@
 name = "zdm-core"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 description = "ZDM's segmented download engine: chunked HTTP range fetching, resume, throttling."
 
 [dependencies]

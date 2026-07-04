@@ -28,7 +28,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "category": "Network",
+    "category": "Utility",
     "shortDescription": "A fast, segmented download manager",
     "longDescription": "ZDM splits downloads across multiple connections for maximum throughput, with queues, batch/pattern downloading, and auto-categorized folders.",
     "icon": [
