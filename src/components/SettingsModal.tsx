@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CATEGORIES } from '../lib/categories'
 import { api } from '../lib/api'
+import { ACCENT_THEMES } from '../lib/accents'
 import type { Settings } from '../lib/types'
 import { DirectoryField } from './DirectoryField'
 import { AboutModal } from './AboutModal'
@@ -72,6 +73,25 @@ export function SettingsModal({ open, settings, onClose, onSave }: SettingsModal
                 onClick={() => setDraft((p) => ({ ...p, notifyOnCompletion: !p.notifyOnCompletion }))}
               >
                 <i />
+              </div>
+            </div>
+            <div className="setting-row">
+              <div>
+                <div className="t">Theme color</div>
+                <div className="d">Accent used for buttons, highlights, and progress</div>
+              </div>
+              <div className="accent-swatches">
+                {ACCENT_THEMES.map((theme) => (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    className={`accent-swatch${draft.accentColor === theme.id ? ' on' : ''}`}
+                    style={{ background: theme.swatch }}
+                    title={theme.label}
+                    aria-label={theme.label}
+                    onClick={() => setDraft((p) => ({ ...p, accentColor: theme.id }))}
+                  />
+                ))}
               </div>
             </div>
 

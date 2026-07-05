@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { readText } from '@tauri-apps/plugin-clipboard-manager'
 import { CATEGORIES, detectCategory, filenameFromUrl, parseBatchPatternPreview } from '../lib/categories'
-import { api } from '../lib/api'
+import { api, type UrlProbe } from '../lib/api'
 import type { QueueInfo, Settings } from '../lib/types'
 import { DirectoryField } from './DirectoryField'
 import { ConflictModal } from './ConflictModal'
+import { LinkCheckModal } from './LinkCheckModal'
 
 interface AddDownloadModalProps {
   open: boolean
@@ -19,8 +20,8 @@ interface AddDownloadModalProps {
     queue: string
     filename?: string
   }) => Promise<void>
-  onAddBatch: (args: {
-    urlPattern: string
+  onAddBatchUrls: (args: {
+    urls: string[]
     destinationDir: string
     connections: number
     category: string
@@ -39,7 +40,7 @@ function isDownloadableUrl(value: string): boolean {
   }
 }
 
-export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle, onAddBatch }: AddDownloadModalProps) {
+export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle, onAddBatchUrls }: AddDownloadModalProps) {
   const [mode, setMode] = useState<Mode>('single')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -59,6 +60,7 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
   const [batchQueueTouched, setBatchQueueTouched] = useState(false)
 
   const [conflict, setConflict] = useState<{ fileName: string; error: string | null } | null>(null)
+  const [linkCheck, setLinkCheck] = useState<{ mode: Mode; probes: UrlProbe[] } | null>(null)
 
   // Reset to a blank slate every time the modal opens, then try to prefill
   // the URL from the clipboard — only if it actually looks like a download
@@ -69,6 +71,7 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
     setError(null)
     setBusy(false)
     setConflict(null)
+    setLinkCheck(null)
     setCategoryTouched(false)
     setBatchQueueTouched(false)
     setCategory('')
@@ -122,6 +125,8 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
 
   if (!open) return null
 
+  // Every add goes through a link check first — it's what surfaces the total
+  // size, and for a batch, which of the expanded URLs actually resolve.
   async function submit() {
     setError(null)
     if (mode === 'single' && !singleUrlValid) {
@@ -133,34 +138,62 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
       return
     }
 
-    // Batch downloads generate their own numbered filenames, so a name clash
-    // there is vanishingly unlikely — conflict checking only applies to single URLs.
-    if (mode === 'single') {
+    setBusy(true)
+    try {
+      const targets = mode === 'single' ? [url] : batchUrls
+      const probes = await api.probeUrls(targets)
+      setLinkCheck({ mode, probes })
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function confirmLinkCheck() {
+    if (!linkCheck) return
+    const validUrls = linkCheck.probes.filter((p) => !p.error).map((p) => p.url)
+    const checkedMode = linkCheck.mode
+    setLinkCheck(null)
+
+    if (checkedMode === 'single') {
+      // "Download Anyway" on a failed probe still means the original URL —
+      // the real download gets its own fresh probe when it actually starts.
       const existing = await api.checkConflict(saveDir, url)
       if (existing) {
         setConflict({ fileName: existing, error: null })
         return
       }
+      await doSubmit()
+    } else {
+      await doSubmitBatch(validUrls)
     }
-    await doSubmit()
   }
 
   async function doSubmit(filenameOverride?: string) {
     setBusy(true)
     try {
-      if (mode === 'single') {
-        let queue = queueId
-        if (queueId === '__new__') queue = `New Queue ${queues.length + 1}`
-        await onAddSingle({ url, destinationDir: saveDir, connections, category: category || 'other', queue, filename: filenameOverride })
-      } else {
-        await onAddBatch({
-          urlPattern: batchUrl,
-          destinationDir: batchSaveDir,
-          connections: batchConnections,
-          category: batchCategory || 'other',
-          queueName: batchQueueName || batchUrl,
-        })
-      }
+      let queue = queueId
+      if (queueId === '__new__') queue = `New Queue ${queues.length + 1}`
+      await onAddSingle({ url, destinationDir: saveDir, connections, category: category || 'other', queue, filename: filenameOverride })
+      onClose()
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function doSubmitBatch(urls: string[]) {
+    setBusy(true)
+    try {
+      await onAddBatchUrls({
+        urls,
+        destinationDir: batchSaveDir,
+        connections: batchConnections,
+        category: batchCategory || 'other',
+        queueName: batchQueueName || batchUrl,
+      })
       onClose()
     } catch (e) {
       setError(String(e))
@@ -301,10 +334,19 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
           {error && <span className="modal-error">{error}</span>}
           <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
           <button className="btn btn-primary" onClick={submit} disabled={busy || !canSubmit}>
-            {mode === 'batch' ? `Queue ${batchUrls.length || ''} Downloads` : 'Start Download'}
+            {busy && !linkCheck ? 'Checking…' : mode === 'batch' ? `Check ${batchUrls.length || ''} Links` : 'Check & Start'}
           </button>
         </div>
       </div>
+
+      <LinkCheckModal
+        open={!!linkCheck}
+        mode={linkCheck?.mode ?? 'single'}
+        probes={linkCheck?.probes ?? []}
+        busy={busy}
+        onCancel={() => setLinkCheck(null)}
+        onConfirm={confirmLinkCheck}
+      />
 
       <ConflictModal
         open={!!conflict}

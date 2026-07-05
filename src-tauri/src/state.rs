@@ -57,6 +57,15 @@ pub struct Settings {
     pub notify_on_completion: bool,
     pub category_dirs: HashMap<String, String>,
     pub default_dir: String,
+    /// One of the ids in `src/lib/accents.ts` — the app only reads this back
+    /// to apply the matching CSS custom properties, so its accepted values
+    /// live entirely on the frontend.
+    #[serde(default = "default_accent")]
+    pub accent_color: String,
+}
+
+fn default_accent() -> String {
+    "amber".to_string()
 }
 
 impl Settings {
@@ -81,7 +90,14 @@ impl Settings {
         .map(|(cat, folder)| (cat.to_string(), sub(folder)))
         .collect();
 
-        Self { max_simultaneous_downloads: 1, default_connections: 8, notify_on_completion: true, category_dirs, default_dir }
+        Self {
+            max_simultaneous_downloads: 1,
+            default_connections: 8,
+            notify_on_completion: true,
+            category_dirs,
+            default_dir,
+            accent_color: default_accent(),
+        }
     }
 }
 

@@ -12,33 +12,80 @@ pub fn publish(app: &AppHandle, state: &AppState, record: &DownloadRecord) {
     let _ = app.emit("download-updated", record);
 }
 
-/// Pulls queued downloads into active transfers up to the configured
-/// concurrency limit. Called after anything that could free or fill a slot:
-/// a new download being added, one finishing, or the limit itself changing.
+/// Resumes a download that has a live (paused) engine task, or — if none
+/// exists, e.g. it was never started, or the app restarted and the in-memory
+/// task registry was cleared — falls back to resuming from its on-disk
+/// sidecar, or starting fresh if there isn't one either.
+pub async fn resume_or_restart(app: &AppHandle, id: uuid::Uuid) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    if state.engine.resume_silent(id).await.is_ok() {
+        return Ok(());
+    }
+
+    let destination = {
+        let records = state.records.lock().await;
+        records.get(&id).map(|r| PathBuf::from(&r.destination))
+    }
+    .ok_or("unknown download")?;
+
+    let has_sidecar = zdm_core::DownloadMeta::load(&destination).await.is_some();
+    let result = if has_sidecar {
+        state.engine.resume_from_disk(destination).await
+    } else {
+        let opts = {
+            let records = state.records.lock().await;
+            let r = records.get(&id).ok_or("unknown download")?;
+            DownloadOptions { id, url: r.url.clone(), destination: PathBuf::from(&r.destination), connections: r.connections }
+        };
+        state.engine.start(opts).await
+    };
+    result.map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Keeps the top `max_simultaneous_downloads` downloads (by seq, among
+/// queued/downloading ones) actually running, and everything past that
+/// window queued — called after anything that could change which downloads
+/// belong in that window: one added, removed, finished, reordered, or the
+/// limit itself changing. Unlike a plain "fill empty slots" scheduler, this
+/// also demotes a running download that a drag-and-drop reorder pushed out
+/// of the window, so a higher-priority one can take its place.
 pub async fn try_promote_queue(app: &AppHandle) {
     let state = app.state::<AppState>();
-    loop {
-        let max = state.settings.lock().await.max_simultaneous_downloads.max(1);
-        let active = state.records.lock().await.values().filter(|r| r.status == DownloadStatus::Downloading).count();
-        if active >= max {
-            break;
+    let max = state.settings.lock().await.max_simultaneous_downloads.max(1);
+
+    let mut candidates: Vec<DownloadRecord> = {
+        let records = state.records.lock().await;
+        records.values().filter(|r| matches!(r.status, DownloadStatus::Downloading | DownloadStatus::Queued)).cloned().collect()
+    };
+    candidates.sort_by_key(|r| r.seq);
+    let split_at = candidates.len().min(max);
+    let (should_run, should_wait) = candidates.split_at(split_at);
+
+    for record in should_wait {
+        if record.status != DownloadStatus::Downloading {
+            continue;
         }
-
-        let candidate = {
-            let records = state.records.lock().await;
-            records.values().filter(|r| r.status == DownloadStatus::Queued).min_by_key(|r| r.seq).cloned()
+        let _ = state.engine.pause_silent(record.id).await;
+        let updated = {
+            let mut records = state.records.lock().await;
+            records.get_mut(&record.id).map(|r| {
+                r.status = DownloadStatus::Queued;
+                r.speed_bps = 0.0;
+                r.active_chunks.clear();
+                r.clone()
+            })
         };
-        let Some(record) = candidate else { break };
+        if let Some(record) = updated {
+            publish(app, &state, &record);
+        }
+    }
 
-        let opts = DownloadOptions {
-            id: record.id,
-            url: record.url.clone(),
-            destination: PathBuf::from(&record.destination),
-            connections: record.connections,
-        };
-
-        match state.engine.start(opts).await {
-            Ok(_) => {
+    for record in should_run {
+        if record.status != DownloadStatus::Queued {
+            continue;
+        }
+        match resume_or_restart(app, record.id).await {
+            Ok(()) => {
                 let mut records = state.records.lock().await;
                 if let Some(r) = records.get_mut(&record.id) {
                     r.status = DownloadStatus::Downloading;
@@ -49,7 +96,7 @@ pub async fn try_promote_queue(app: &AppHandle) {
                     let mut records = state.records.lock().await;
                     records.get_mut(&record.id).map(|r| {
                         r.status = DownloadStatus::Failed;
-                        r.error = Some(e.to_string());
+                        r.error = Some(e);
                         r.clone()
                     })
                 };

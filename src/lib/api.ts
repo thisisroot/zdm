@@ -24,11 +24,29 @@ export const api = {
     queueName: string
   }) => invoke<string[]>('add_batch', args),
 
+  addBatchUrls: (args: {
+    urls: string[]
+    destinationDir: string
+    connections: number
+    category: string
+    queueName: string
+  }) => invoke<string[]>('add_batch_urls', args),
+
+  probeUrls: (urls: string[]) => invoke<UrlProbe[]>('probe_urls', { urls }),
+
   pauseDownload: (id: string) => invoke<void>('pause_download', { id }),
   resumeDownload: (id: string) => invoke<void>('resume_download', { id }),
   retryDownload: (id: string) => invoke<void>('retry_download', { id }),
   cancelDownload: (id: string) => invoke<void>('cancel_download', { id }),
   removeDownload: (id: string, deleteFile: boolean) => invoke<void>('remove_download', { id, deleteFile }),
   deleteQueue: (id: string) => invoke<void>('delete_queue', { id }),
+  toggleQueue: (queueId: string) => invoke<void>('toggle_queue', { queueId }),
+  toggleAll: () => invoke<void>('toggle_all'),
   reorderDownloads: (ids: string[]) => invoke<void>('reorder_downloads', { ids }),
+}
+
+export interface UrlProbe {
+  url: string
+  totalSize: number | null
+  error: string | null
 }

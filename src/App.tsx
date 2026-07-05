@@ -10,6 +10,7 @@ import { SettingsModal } from './components/SettingsModal'
 import { useDownloads } from './hooks/useDownloads'
 import { useHistory } from './hooks/useHistory'
 import { api } from './lib/api'
+import { applyAccent } from './lib/accents'
 import { matchesFilter, type DownloadRecord, type Filter } from './lib/types'
 import { CancelIcon, PauseIcon, PlayIcon } from './components/icons'
 
@@ -22,6 +23,10 @@ export default function App() {
   const [dragId, setDragId] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+
+  useEffect(() => {
+    if (settings) applyAccent(settings.accentColor)
+  }, [settings])
 
   const allSorted = useMemo(() => Object.values(downloads).sort((a, b) => a.seq - b.seq), [downloads])
 
@@ -72,19 +77,17 @@ export default function App() {
   }
 
   const activeDownloads = useMemo(() => allSorted.filter((d) => d.status === 'downloading'), [allSorted])
+  const queuedDownloads = useMemo(() => allSorted.filter((d) => d.status === 'queued'), [allSorted])
   const pausedDownloads = useMemo(() => allSorted.filter((d) => d.status === 'paused'), [allSorted])
   const totalSpeed = activeDownloads.reduce((sum, d) => sum + d.speedBps, 0)
   const totalConnections = activeDownloads.reduce((sum, d) => sum + d.connections, 0)
   const heroHistory = useHistory(() => totalSpeed)
 
-  // A single global control: pause everything running, or — once nothing is —
-  // resume everything that was paused. Mirrors the per-row pause/resume icon.
+  // A single global control: stop everything running or queued, or — once
+  // nothing is — let the scheduler resume whatever was held, up to the
+  // concurrency limit. Mirrors the per-row pause/resume icon.
   async function toggleAllActive() {
-    if (activeDownloads.length > 0) {
-      await Promise.all(activeDownloads.map((d) => api.pauseDownload(d.id)))
-    } else {
-      await Promise.all(pausedDownloads.map((d) => api.resumeDownload(d.id)))
-    }
+    await api.toggleAll()
   }
 
   const selectedRecord = selectedId ? downloads[selectedId] ?? null : null
@@ -96,15 +99,7 @@ export default function App() {
   }
 
   async function toggleQueue(queueId: string) {
-    const members = allSorted.filter((d) => d.queue === queueId)
-    const anyRunning = members.some((d) => d.status === 'downloading')
-    await Promise.all(
-      members.map((d) => {
-        if (anyRunning && d.status === 'downloading') return api.pauseDownload(d.id)
-        if (!anyRunning && d.status === 'paused') return api.resumeDownload(d.id)
-        return Promise.resolve()
-      }),
-    )
+    await api.toggleQueue(queueId)
   }
 
   async function openFolder(record: DownloadRecord) {
@@ -187,6 +182,7 @@ export default function App() {
         speedHistory={heroHistory}
         activeCount={activeDownloads.length}
         activeConnections={totalConnections}
+        queuedCount={queuedDownloads.length}
         pausedCount={pausedDownloads.length}
         search={search}
         onSearchChange={setSearch}
@@ -194,6 +190,7 @@ export default function App() {
           const root = document.documentElement
           const current = root.getAttribute('data-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
           root.setAttribute('data-theme', current === 'dark' ? 'light' : 'dark')
+          if (settings) applyAccent(settings.accentColor)
         }}
         onToggleAllActive={toggleAllActive}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -297,8 +294,8 @@ export default function App() {
           await refreshQueues()
           setSelectedId(id)
         }}
-        onAddBatch={async (args) => {
-          const ids = await api.addBatch(args)
+        onAddBatchUrls={async (args) => {
+          const ids = await api.addBatchUrls(args)
           await refreshQueues()
           if (ids[0]) setSelectedId(ids[0])
         }}

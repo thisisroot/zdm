@@ -53,4 +53,5 @@ export interface Settings {
   notifyOnCompletion: boolean
   categoryDirs: Record<string, string>
   defaultDir: string
+  accentColor: string
 }

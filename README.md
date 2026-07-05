@@ -51,9 +51,15 @@ Grab the latest installer for your platform from the
 | macOS | `.dmg` |
 | Linux | `.deb`, `.rpm`, or AppImage |
 
-> Builds are currently unsigned. Windows SmartScreen and macOS Gatekeeper will
-> show a warning on first launch — choose "More info → Run anyway" (Windows)
-> or right-click → Open (macOS).
+> Builds are currently unsigned. On Windows, SmartScreen shows a warning on
+> first launch — choose "More info → Run anyway". On macOS, Gatekeeper will
+> refuse to open the app and say it's "damaged" — this isn't corruption, it's
+> Gatekeeper rejecting an unsigned, un-notarized app; clear the quarantine flag
+> it's downloaded with by running this in Terminal after moving ZDM to
+> Applications, then open it normally:
+> ```
+> xattr -cr /Applications/ZDM.app
+> ```
 
 ## Architecture
 

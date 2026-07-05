@@ -136,6 +136,14 @@ impl DownloadEngine {
         (engine, events_rx)
     }
 
+    /// Checks a URL's reachability and size without starting a transfer, using
+    /// the same client (and User-Agent) real downloads use — a plain
+    /// `reqwest::Client::new()` probe can get a different result (e.g. a 403)
+    /// than what the actual download would see.
+    pub async fn probe_url(&self, url: &str) -> Result<crate::probe::ProbeResult, DownloadError> {
+        probe(&self.client, url).await
+    }
+
     /// Probes the URL, preallocates the destination file, and hands back an id
     /// immediately — the transfer itself runs in a background task so callers
     /// (e.g. a Tauri command) never block on a multi-gigabyte download.
@@ -410,6 +418,25 @@ impl DownloadEngine {
         let control = tasks.get(&id).ok_or(DownloadError::NotFound(id))?;
         control.resume();
         let _ = self.events_tx.send(DownloadEvent::Resumed { id });
+        Ok(())
+    }
+
+    /// Same as `pause`/`resume`, but without emitting a `Paused`/`Resumed`
+    /// event. Used by the scheduler when it demotes or re-promotes a download
+    /// on its own (e.g. a drag-and-drop reorder push it out of the active
+    /// window) — the scheduler decides the resulting status itself, so the
+    /// normal event would just race it.
+    pub async fn pause_silent(&self, id: Uuid) -> Result<(), DownloadError> {
+        let tasks = self.tasks.lock().await;
+        let control = tasks.get(&id).ok_or(DownloadError::NotFound(id))?;
+        control.pause();
+        Ok(())
+    }
+
+    pub async fn resume_silent(&self, id: Uuid) -> Result<(), DownloadError> {
+        let tasks = self.tasks.lock().await;
+        let control = tasks.get(&id).ok_or(DownloadError::NotFound(id))?;
+        control.resume();
         Ok(())
     }
 

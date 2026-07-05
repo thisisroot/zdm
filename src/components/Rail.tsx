@@ -53,7 +53,9 @@ export function Rail({ downloads, queues, filter, onFilterChange, onToggleQueue,
       {queues.map((q) => {
         const f: Filter = { kind: 'queue', queueId: q.id }
         const items = downloads.filter((d) => matchesFilter(d, f))
-        const anyRunning = items.some((d) => d.status === 'downloading')
+        // Matches the backend's toggle_queue: queued counts as "active" too,
+        // since stopping a queue holds not-yet-started members as well.
+        const anyRunning = items.some((d) => d.status === 'downloading' || d.status === 'queued')
         return (
           <button key={q.id} className={`rail-item${sameFilter(filter, f) ? ' active' : ''}`} onClick={() => onFilterChange(f)}>
             <ListIcon />

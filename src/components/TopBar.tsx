@@ -6,6 +6,7 @@ interface TopBarProps {
   speedHistory: number[]
   activeCount: number
   activeConnections: number
+  queuedCount: number
   pausedCount: number
   search: string
   onSearchChange: (value: string) => void
@@ -20,6 +21,7 @@ export function TopBar({
   speedHistory,
   activeCount,
   activeConnections,
+  queuedCount,
   pausedCount,
   search,
   onSearchChange,
@@ -28,6 +30,9 @@ export function TopBar({
   onOpenSettings,
   onOpenAdd,
 }: TopBarProps) {
+  // Queued counts as "running" for this control too — toggle_all holds
+  // not-yet-started downloads too, so the icon needs to reflect that.
+  const anyRunnable = activeCount > 0 || queuedCount > 0
   return (
     <div className="topbar">
       <div className="hero-speed">
@@ -49,14 +54,14 @@ export function TopBar({
       <button className="btn btn-icon" title="Toggle theme" aria-label="Toggle theme" onClick={onToggleTheme}>
         <ThemeIcon />
       </button>
-      {(activeCount > 0 || pausedCount > 0) && (
+      {(anyRunnable || pausedCount > 0) && (
         <button
           className="btn btn-icon"
-          title={activeCount > 0 ? 'Pause all active downloads' : 'Resume all paused downloads'}
-          aria-label={activeCount > 0 ? 'Pause all active downloads' : 'Resume all paused downloads'}
+          title={anyRunnable ? 'Pause all active downloads' : 'Resume all paused downloads'}
+          aria-label={anyRunnable ? 'Pause all active downloads' : 'Resume all paused downloads'}
           onClick={onToggleAllActive}
         >
-          {activeCount > 0 ? <PauseIcon /> : <PlayIcon />}
+          {anyRunnable ? <PauseIcon /> : <PlayIcon />}
         </button>
       )}
       <button className="btn btn-icon" title="Settings" aria-label="Settings" onClick={onOpenSettings}>

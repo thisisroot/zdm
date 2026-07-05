@@ -106,14 +106,18 @@ pub fn run() {
             commands::update_settings,
             commands::choose_directory,
             commands::check_conflict,
+            commands::probe_urls,
             commands::add_download,
             commands::add_batch,
+            commands::add_batch_urls,
             commands::pause_download,
             commands::resume_download,
             commands::retry_download,
             commands::cancel_download,
             commands::remove_download,
             commands::delete_queue,
+            commands::toggle_queue,
+            commands::toggle_all,
             commands::reorder_downloads,
         ])
         .run(tauri::generate_context!())
