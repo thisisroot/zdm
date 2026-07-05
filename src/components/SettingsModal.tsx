@@ -3,6 +3,7 @@ import { CATEGORIES } from '../lib/categories'
 import { api } from '../lib/api'
 import type { Settings } from '../lib/types'
 import { DirectoryField } from './DirectoryField'
+import { AboutModal } from './AboutModal'
 
 interface SettingsModalProps {
   open: boolean
@@ -13,6 +14,7 @@ interface SettingsModalProps {
 
 export function SettingsModal({ open, settings, onClose, onSave }: SettingsModalProps) {
   const [draft, setDraft] = useState<Settings>(settings)
+  const [aboutOpen, setAboutOpen] = useState(false)
 
   useEffect(() => {
     if (open) setDraft(settings)
@@ -97,9 +99,12 @@ export function SettingsModal({ open, settings, onClose, onSave }: SettingsModal
           </div>
         </div>
         <div className="modal-actions">
+          <button className="btn" onClick={() => setAboutOpen(true)} style={{ marginRight: 'auto' }}>About ZDM</button>
           <button className="btn btn-primary" onClick={done}>Done</button>
         </div>
       </div>
+
+      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </div>
   )
 }

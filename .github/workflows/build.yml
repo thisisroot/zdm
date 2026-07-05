@@ -49,10 +49,23 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # Signing is opt-in via repo secrets — unset, these env vars are empty
+      # and tauri-action silently produces the same unsigned build as today.
+      # Adding a Windows Authenticode cert (WINDOWS_CERTIFICATE/_PASSWORD) or
+      # an Apple Developer ID (APPLE_CERTIFICATE/_PASSWORD, APPLE_SIGNING_IDENTITY,
+      # APPLE_ID/_PASSWORD, APPLE_TEAM_ID) as secrets is enough to turn signing on.
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: ${{ github.ref_type == 'tag' && format('ZDM {0}', github.ref_name) || '' }}

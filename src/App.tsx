@@ -25,16 +25,18 @@ export default function App() {
 
   const allSorted = useMemo(() => Object.values(downloads).sort((a, b) => a.seq - b.seq), [downloads])
 
-  useEffect(() => {
-    if (selectedId && downloads[selectedId]) return
-    if (allSorted.length) setSelectedId(allSorted[0].id)
-  }, [allSorted, selectedId, downloads])
-
   const list = useMemo(() => {
     const filtered = allSorted.filter((d) => matchesFilter(d, filter))
     const q = search.trim().toLowerCase()
     return q ? filtered.filter((d) => d.name.toLowerCase().includes(q)) : filtered
   }, [allSorted, filter, search])
+
+  // Falls back within the current view, not the whole download set — losing
+  // the selection while looking at one queue shouldn't jump focus into another.
+  useEffect(() => {
+    if (selectedId && downloads[selectedId]) return
+    if (list.length) setSelectedId(list[0].id)
+  }, [list, selectedId, downloads])
 
   // checkedIds can outlive its row (e.g. after a removal) — always derive the
   // working set from what's actually still in `list` rather than trusting the set directly.
@@ -70,9 +72,20 @@ export default function App() {
   }
 
   const activeDownloads = useMemo(() => allSorted.filter((d) => d.status === 'downloading'), [allSorted])
+  const pausedDownloads = useMemo(() => allSorted.filter((d) => d.status === 'paused'), [allSorted])
   const totalSpeed = activeDownloads.reduce((sum, d) => sum + d.speedBps, 0)
   const totalConnections = activeDownloads.reduce((sum, d) => sum + d.connections, 0)
   const heroHistory = useHistory(() => totalSpeed)
+
+  // A single global control: pause everything running, or — once nothing is —
+  // resume everything that was paused. Mirrors the per-row pause/resume icon.
+  async function toggleAllActive() {
+    if (activeDownloads.length > 0) {
+      await Promise.all(activeDownloads.map((d) => api.pauseDownload(d.id)))
+    } else {
+      await Promise.all(pausedDownloads.map((d) => api.resumeDownload(d.id)))
+    }
+  }
 
   const selectedRecord = selectedId ? downloads[selectedId] ?? null : null
   const selectedHistory = useHistory(() => selectedRecord?.speedBps ?? 0)
@@ -108,8 +121,13 @@ export default function App() {
   async function removeRecord(id: string) {
     const record = downloads[id]
     const deleteFile = record ? record.status !== 'completed' : false
+    // Picked from the currently visible list, before the removal — whichever
+    // neighbor takes the removed row's place (or the previous one, if it was last).
+    if (selectedId === id) {
+      const idx = list.findIndex((d) => d.id === id)
+      setSelectedId(list[idx + 1]?.id ?? list[idx - 1]?.id ?? null)
+    }
     await api.removeDownload(id, deleteFile)
-    if (selectedId === id) setSelectedId(null)
     setCheckedIds((prev) => {
       if (!prev.has(id)) return prev
       const next = new Set(prev)
@@ -169,6 +187,7 @@ export default function App() {
         speedHistory={heroHistory}
         activeCount={activeDownloads.length}
         activeConnections={totalConnections}
+        pausedCount={pausedDownloads.length}
         search={search}
         onSearchChange={setSearch}
         onToggleTheme={() => {
@@ -176,6 +195,7 @@ export default function App() {
           const current = root.getAttribute('data-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
           root.setAttribute('data-theme', current === 'dark' ? 'light' : 'dark')
         }}
+        onToggleAllActive={toggleAllActive}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenAdd={() => setAddOpen(true)}
       />
@@ -222,10 +242,19 @@ export default function App() {
                 key={record.id}
                 className={`row-drag${dragId === record.id ? ' dragging' : ''}`}
                 draggable={canReorder}
-                onDragStart={() => setDragId(record.id)}
+                onDragStart={(e) => {
+                  setDragId(record.id)
+                  // Some WebView engines only fire drop if the drag carries data.
+                  e.dataTransfer.setData('text/plain', record.id)
+                  e.dataTransfer.effectAllowed = 'move'
+                }}
                 onDragEnd={() => setDragId(null)}
                 onDragOver={(e) => canReorder && e.preventDefault()}
-                onDrop={() => canReorder && handleDrop(record.id)}
+                onDrop={(e) => {
+                  if (!canReorder) return
+                  e.preventDefault()
+                  handleDrop(record.id)
+                }}
               >
                 <DownloadRow
                   record={record}

@@ -107,7 +107,10 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url])
 
+  const singleUrlValid = isDownloadableUrl(url.trim())
   const batchUrls = parseBatchPatternPreview(batchUrl)
+  const batchUrlValid = batchUrls.length > 0 && isDownloadableUrl(batchUrls[0])
+  const canSubmit = mode === 'single' ? singleUrlValid : batchUrlValid
   useEffect(() => {
     if (batchUrls.length === 0) return
     const detected = detectCategory(filenameFromUrl(batchUrls[0]))
@@ -121,12 +124,12 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
 
   async function submit() {
     setError(null)
-    if (mode === 'single' && !url.trim()) {
-      setError('Enter a URL to download')
+    if (mode === 'single' && !singleUrlValid) {
+      setError(url.trim() ? 'Enter a valid http(s) URL' : 'Enter a URL to download')
       return
     }
-    if (mode === 'batch' && batchUrls.length === 0) {
-      setError('Add a range like [01-99] to the URL pattern above')
+    if (mode === 'batch' && !batchUrlValid) {
+      setError(batchUrls.length === 0 ? 'Add a range like [01-99] to the URL pattern above' : 'Enter a valid http(s) URL')
       return
     }
 
@@ -297,7 +300,7 @@ export function AddDownloadModal({ open, settings, queues, onClose, onAddSingle,
         <div className="modal-actions">
           {error && <span className="modal-error">{error}</span>}
           <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
-          <button className="btn btn-primary" onClick={submit} disabled={busy}>
+          <button className="btn btn-primary" onClick={submit} disabled={busy || !canSubmit}>
             {mode === 'batch' ? `Queue ${batchUrls.length || ''} Downloads` : 'Start Download'}
           </button>
         </div>

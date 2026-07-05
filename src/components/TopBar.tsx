@@ -1,14 +1,16 @@
 import { Sparkline } from './Sparkline'
-import { PlusIcon, SearchIcon, SettingsIcon, ThemeIcon } from './icons'
+import { PauseIcon, PlayIcon, PlusIcon, SearchIcon, SettingsIcon, ThemeIcon } from './icons'
 
 interface TopBarProps {
   totalSpeedBps: number
   speedHistory: number[]
   activeCount: number
   activeConnections: number
+  pausedCount: number
   search: string
   onSearchChange: (value: string) => void
   onToggleTheme: () => void
+  onToggleAllActive: () => void
   onOpenSettings: () => void
   onOpenAdd: () => void
 }
@@ -18,9 +20,11 @@ export function TopBar({
   speedHistory,
   activeCount,
   activeConnections,
+  pausedCount,
   search,
   onSearchChange,
   onToggleTheme,
+  onToggleAllActive,
   onOpenSettings,
   onOpenAdd,
 }: TopBarProps) {
@@ -45,6 +49,16 @@ export function TopBar({
       <button className="btn btn-icon" title="Toggle theme" aria-label="Toggle theme" onClick={onToggleTheme}>
         <ThemeIcon />
       </button>
+      {(activeCount > 0 || pausedCount > 0) && (
+        <button
+          className="btn btn-icon"
+          title={activeCount > 0 ? 'Pause all active downloads' : 'Resume all paused downloads'}
+          aria-label={activeCount > 0 ? 'Pause all active downloads' : 'Resume all paused downloads'}
+          onClick={onToggleAllActive}
+        >
+          {activeCount > 0 ? <PauseIcon /> : <PlayIcon />}
+        </button>
+      )}
       <button className="btn btn-icon" title="Settings" aria-label="Settings" onClick={onOpenSettings}>
         <SettingsIcon />
       </button>
