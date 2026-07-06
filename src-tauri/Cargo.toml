@@ -1,6 +1,6 @@
 [package]
 name = "zdm"
-version = "0.3.0"
+version = "0.3.1"
 description = "ZDM — a fast, segmented download manager"
 authors = ["thisisroot"]
 license = "MIT"
