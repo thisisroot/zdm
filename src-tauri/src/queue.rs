@@ -81,14 +81,34 @@ pub async fn try_promote_queue(app: &AppHandle) {
     }
 
     for record in should_run {
-        if record.status != DownloadStatus::Queued {
-            continue;
+        match record.status {
+            DownloadStatus::Queued => {}
+            // A record can say Downloading while its engine task is actually
+            // gone (e.g. it was added — or its recovery was still in flight —
+            // while another record wrongly held this slot, or its task ended
+            // without the resulting event having been applied yet). Trusting
+            // the status blindly here means a single stale record permanently
+            // occupies the slot and every future download sits Queued forever;
+            // verify liveness and fall through to (re)start it if it's dead.
+            DownloadStatus::Downloading if !state.engine.is_active(record.id).await => {}
+            _ => continue,
         }
         match resume_or_restart(app, record.id).await {
             Ok(()) => {
-                let mut records = state.records.lock().await;
-                if let Some(r) = records.get_mut(&record.id) {
-                    r.status = DownloadStatus::Downloading;
+                let updated = {
+                    let mut records = state.records.lock().await;
+                    records.get_mut(&record.id).map(|r| {
+                        r.status = DownloadStatus::Downloading;
+                        r.clone()
+                    })
+                };
+                // resume_or_restart may have taken the "resume a live paused
+                // task" path, which deliberately emits no event of its own
+                // (see resume_silent) — publish here so the frontend actually
+                // finds out, instead of showing this download stuck Queued
+                // while it's genuinely transferring again.
+                if let Some(record) = updated {
+                    publish(app, &state, &record);
                 }
             }
             Err(e) => {

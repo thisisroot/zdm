@@ -33,4 +33,6 @@ tauri-plugin-notification = "2"
 tauri-plugin-clipboard-manager = "2"
 
 [dev-dependencies]
+axum = "0.8.4"
+tauri = { version = "2.11.3", features = ["test"] }
 tempfile = "3"

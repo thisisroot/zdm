@@ -446,6 +446,16 @@ impl DownloadEngine {
         control.cancel();
         Ok(())
     }
+
+    /// Whether `id` currently has a live task registered — i.e. whether a
+    /// record claiming to be `Downloading` actually has something behind it.
+    /// Needed because a record's status and the engine's task registry can
+    /// drift apart (e.g. a task that ends without the caller having applied
+    /// the resulting event yet), and callers that trust the status blindly
+    /// can end up treating a dead task as permanently occupying a slot.
+    pub async fn is_active(&self, id: Uuid) -> bool {
+        self.tasks.lock().await.contains_key(&id)
+    }
 }
 
 /// Retries a chunk on transient failures (429, 5xx, connection resets) with

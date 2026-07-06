@@ -1,16 +1,17 @@
 mod batch;
-mod commands;
+pub mod commands;
 mod db;
 mod filename;
-mod queue;
-mod state;
+pub mod queue;
+pub mod state;
+
+pub use db::Db;
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Manager, WindowEvent};
 use zdm_core::DownloadEngine;
 
-use db::Db;
 use state::{AppState, Settings};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
