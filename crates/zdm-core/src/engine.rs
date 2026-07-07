@@ -488,7 +488,7 @@ async fn download_chunk_with_retry(
                 if attempt >= MAX_CHUNK_RETRIES {
                     return Err(err);
                 }
-                if err.is_rate_limited() {
+                if err.signals_too_many_connections() {
                     gate.throttle_down();
                 }
                 attempt += 1;

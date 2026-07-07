@@ -68,8 +68,14 @@ pub fn run() {
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
+            // A solid-white silhouette rather than the full-color app icon —
+            // most desktop trays (especially Windows' dark taskbar) expect a
+            // monochrome mark, not a colored tile.
+            let tray_icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon-white.png"))
+                .expect("tray-icon-white.png is a valid PNG");
+
             TrayIconBuilder::new()
-                .icon(app.default_window_icon().cloned().expect("app icon is embedded via tauri.conf.json"))
+                .icon(tray_icon)
                 .menu(&tray_menu)
                 .tooltip("ZDM Download Manager")
                 .show_menu_on_left_click(false)

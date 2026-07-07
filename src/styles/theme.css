@@ -102,7 +102,7 @@ body::before{
     radial-gradient(640px 640px at 10% 10%, var(--accent-soft), transparent 60%),
     radial-gradient(720px 720px at 92% 18%, var(--progress-soft), transparent 60%),
     radial-gradient(680px 680px at 22% 96%, var(--plum-soft), transparent 60%),
-    radial-gradient(640px 640px at 96% 92%, var(--blue-soft), transparent 60%);
+    radial-gradient(640px 640px at 96% 92%, var(--accent-soft), transparent 60%);
   filter:blur(40px);
 }
 input, textarea{ user-select:text; }
@@ -147,9 +147,9 @@ button{ font-family:inherit; }
 .hero-speed{ display:flex; align-items:baseline; gap:10px; flex:none; }
 .hero-speed .figure{ font-family:var(--font-display); font-weight:700; font-size:34px; letter-spacing:.01em; color:var(--progress-strong); line-height:1; }
 .hero-speed .unit{ font-family:var(--font-mono); font-size:14px; color:var(--text-dim); }
-.hero-meta{ display:flex; flex-direction:column; gap:2px; border-left:1px solid var(--border); padding-left:18px; flex:none; min-width:0; max-width:220px; }
+.hero-meta{ display:flex; flex-direction:column; gap:2px; border-left:1px solid var(--border); padding-left:18px; flex:none; min-width:0; }
 .hero-meta .label{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-faint); }
-.hero-meta .value{ font-size:12.5px; color:var(--text-dim); font-family:var(--font-mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hero-meta .value{ font-size:12.5px; color:var(--text-dim); font-family:var(--font-mono); white-space:nowrap; }
 .spark{ height:34px; width:120px; flex:none; opacity:.9; }
 
 .search{

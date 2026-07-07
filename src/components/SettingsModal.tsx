@@ -77,6 +77,28 @@ export function SettingsModal({ open, settings, onClose, onSave }: SettingsModal
             </div>
             <div className="setting-row">
               <div>
+                <div className="t">Speed unit</div>
+                <div className="d">How transfer speeds are displayed</div>
+              </div>
+              <div className="seg-tabs" style={{ margin: 0 }}>
+                <button
+                  type="button"
+                  className={`seg-tab${draft.speedUnit === 'megabyte' ? ' on' : ''}`}
+                  onClick={() => setDraft((p) => ({ ...p, speedUnit: 'megabyte' }))}
+                >
+                  MB/s
+                </button>
+                <button
+                  type="button"
+                  className={`seg-tab${draft.speedUnit === 'megabit' ? ' on' : ''}`}
+                  onClick={() => setDraft((p) => ({ ...p, speedUnit: 'megabit' }))}
+                >
+                  Mbps
+                </button>
+              </div>
+            </div>
+            <div className="setting-row">
+              <div>
                 <div className="t">Theme color</div>
                 <div className="d">Accent used for buttons, highlights, and progress</div>
               </div>

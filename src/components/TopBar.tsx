@@ -1,8 +1,10 @@
 import { Sparkline } from './Sparkline'
 import { PauseIcon, PlayIcon, PlusIcon, SearchIcon, SettingsIcon, ThemeIcon } from './icons'
+import type { SpeedUnit } from '../lib/types'
 
 interface TopBarProps {
   totalSpeedBps: number
+  speedUnit: SpeedUnit
   speedHistory: number[]
   activeCount: number
   activeConnections: number
@@ -18,6 +20,7 @@ interface TopBarProps {
 
 export function TopBar({
   totalSpeedBps,
+  speedUnit,
   speedHistory,
   activeCount,
   activeConnections,
@@ -33,11 +36,13 @@ export function TopBar({
   // Queued counts as "running" for this control too — toggle_all holds
   // not-yet-started downloads too, so the icon needs to reflect that.
   const anyRunnable = activeCount > 0 || queuedCount > 0
+  const isMegabit = speedUnit === 'megabit'
+  const figure = isMegabit ? (totalSpeedBps * 8) / 1e6 : totalSpeedBps / 1e6
   return (
     <div className="topbar">
       <div className="hero-speed">
-        <span className="figure tabular">{(totalSpeedBps / 1e6).toFixed(1)}</span>
-        <span className="unit">MB/s</span>
+        <span className="figure tabular">{figure.toFixed(1)}</span>
+        <span className="unit">{isMegabit ? 'Mbps' : 'MB/s'}</span>
       </div>
       <Sparkline className="spark" data={speedHistory} width={240} height={68} />
       <div className="hero-meta">

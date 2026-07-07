@@ -47,6 +47,8 @@ export interface QueueInfo {
   name: string
 }
 
+export type SpeedUnit = 'megabyte' | 'megabit'
+
 export interface Settings {
   maxSimultaneousDownloads: number
   defaultConnections: number
@@ -54,4 +56,5 @@ export interface Settings {
   categoryDirs: Record<string, string>
   defaultDir: string
   accentColor: string
+  speedUnit: SpeedUnit
 }

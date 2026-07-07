@@ -1,4 +1,4 @@
-import type { DownloadRecord } from './types'
+import type { DownloadRecord, SpeedUnit } from './types'
 
 export interface Category {
   id: string
@@ -73,15 +73,20 @@ export function formatBytes(bytes: number | null): string {
   return `${(bytes / 1e3).toFixed(0)} KB`
 }
 
-export function formatSpeed(bps: number): string {
+/** `unit` defaults to megabyte so call sites that don't have a settings
+ * value handy yet (or genuinely don't care) keep the original behavior. */
+export function formatSpeed(bps: number, unit: SpeedUnit = 'megabyte'): string {
+  if (unit === 'megabit') return `${((bps * 8) / 1e6).toFixed(1)} Mbps`
   return `${(bps / 1e6).toFixed(1)} MB/s`
 }
 
 export function formatEta(record: DownloadRecord): string {
   if (record.status !== 'downloading' || record.speedBps <= 0 || record.totalSize == null) return '—'
   const remainingSeconds = (record.totalSize - record.downloaded) / record.speedBps
-  const minutes = Math.floor(remainingSeconds / 60)
+  const hours = Math.floor(remainingSeconds / 3600)
+  const minutes = Math.floor((remainingSeconds % 3600) / 60)
   const seconds = Math.floor(remainingSeconds % 60)
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s left`
   return `${minutes}m ${seconds}s left`
 }
 

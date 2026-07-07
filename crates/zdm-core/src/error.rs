@@ -36,7 +36,17 @@ impl DownloadError {
         }
     }
 
-    pub fn is_rate_limited(&self) -> bool {
+    /// Whether this failure means "the server can't handle this many
+    /// concurrent connections" — an explicit 429, or a bare connection-level
+    /// failure (refused/reset/timed out). Servers that cap concurrency often
+    /// don't bother with a 429; they just drop the extra sockets, which
+    /// surfaces here as a generic `Http`/`Io` error indistinguishable from a
+    /// one-off network blip. Treating it the same as a 429 means a download
+    /// against a single-connection-only server converges down to one
+    /// connection after the first failed batch instead of re-attempting the
+    /// same oversized fan-out on every subsequent chunk.
+    pub fn signals_too_many_connections(&self) -> bool {
         matches!(self, DownloadError::Retryable { status, .. } if *status == reqwest::StatusCode::TOO_MANY_REQUESTS)
+            || matches!(self, DownloadError::Http(_) | DownloadError::Io(_))
     }
 }

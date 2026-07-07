@@ -62,10 +62,18 @@ pub struct Settings {
     /// live entirely on the frontend.
     #[serde(default = "default_accent")]
     pub accent_color: String,
+    /// "megabyte" or "megabit" — like `accent_color`, purely a display
+    /// preference the frontend reads back to pick how it renders speeds.
+    #[serde(default = "default_speed_unit")]
+    pub speed_unit: String,
 }
 
 fn default_accent() -> String {
     "amber".to_string()
+}
+
+fn default_speed_unit() -> String {
+    "megabyte".to_string()
 }
 
 impl Settings {
@@ -97,6 +105,7 @@ impl Settings {
             category_dirs,
             default_dir,
             accent_color: default_accent(),
+            speed_unit: default_speed_unit(),
         }
     }
 }
@@ -107,6 +116,14 @@ pub struct AppState {
     pub records: Mutex<HashMap<Uuid, DownloadRecord>>,
     pub queues: Mutex<Vec<QueueInfo>>,
     pub settings: Mutex<Settings>,
+    /// Serializes `try_promote_queue` runs. It reads `records` into a
+    /// snapshot, decides who should be promoted/demoted, then writes the
+    /// decision back over several separate lock acquisitions — two calls
+    /// overlapping (e.g. a drag-and-drop reorder landing right as an
+    /// unrelated download finishes) can each act on a now-stale snapshot of
+    /// the other's in-progress change, so the whole run needs to be atomic
+    /// with respect to itself, not just each individual field access.
+    pub scheduler_lock: Mutex<()>,
     seq_counter: AtomicU64,
 }
 
@@ -132,6 +149,7 @@ impl AppState {
             records: Mutex::new(initial_downloads.into_iter().map(|r| (r.id, r)).collect()),
             queues: Mutex::new(queues),
             settings: Mutex::new(settings),
+            scheduler_lock: Mutex::new(()),
             seq_counter: AtomicU64::new(next_seq),
         }
     }

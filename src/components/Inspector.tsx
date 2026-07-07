@@ -1,11 +1,12 @@
-import { formatBytes, formatEta } from '../lib/categories'
+import { formatBytes, formatEta, formatSpeed } from '../lib/categories'
 import { useConnectionSpeeds } from '../hooks/useConnectionSpeeds'
-import type { DownloadRecord } from '../lib/types'
+import type { DownloadRecord, SpeedUnit } from '../lib/types'
 import { Sparkline } from './Sparkline'
 
 interface InspectorProps {
   record: DownloadRecord | null
   queueName: string | null
+  speedUnit: SpeedUnit
   speedHistory: number[]
   onPause: () => void
   onResume: () => void
@@ -14,7 +15,7 @@ interface InspectorProps {
   onRemove: () => void
 }
 
-export function Inspector({ record, queueName, speedHistory, onPause, onResume, onRetry, onOpenFolder, onRemove }: InspectorProps) {
+export function Inspector({ record, queueName, speedUnit, speedHistory, onPause, onResume, onRetry, onOpenFolder, onRemove }: InspectorProps) {
   const connSpeeds = useConnectionSpeeds(record)
 
   if (!record) {
@@ -72,7 +73,7 @@ export function Inspector({ record, queueName, speedHistory, onPause, onResume, 
         ) : (
           <table className="conn-table">
             <thead>
-              <tr><th>#</th><th>Byte range</th><th>Progress</th><th>MB/s</th></tr>
+              <tr><th>#</th><th>Byte range</th><th>Progress</th><th>{speedUnit === 'megabit' ? 'Mbps' : 'MB/s'}</th></tr>
             </thead>
             <tbody>
               {rows.map((r, i) => (
@@ -80,7 +81,7 @@ export function Inspector({ record, queueName, speedHistory, onPause, onResume, 
                   <td className="num">{i + 1}</td>
                   <td>{formatBytes(r.start)}–{formatBytes(r.end)}</td>
                   <td><div className="conn-mini"><i style={{ width: `${r.pct}%` }} /></div></td>
-                  <td className="num">{(r.speed / 1e6).toFixed(2)}</td>
+                  <td className="num">{formatSpeed(r.speed, speedUnit).replace(/ (MB\/s|Mbps)$/, '')}</td>
                 </tr>
               ))}
             </tbody>

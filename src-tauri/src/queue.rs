@@ -51,6 +51,9 @@ pub async fn resume_or_restart(app: &AppHandle, id: uuid::Uuid) -> Result<(), St
 /// of the window, so a higher-priority one can take its place.
 pub async fn try_promote_queue(app: &AppHandle) {
     let state = app.state::<AppState>();
+    // Holds for the whole run — see the field doc on `scheduler_lock` for why
+    // two overlapping runs can't just be left to interleave.
+    let _scheduler_guard = state.scheduler_lock.lock().await;
     let max = state.settings.lock().await.max_simultaneous_downloads.max(1);
 
     let mut candidates: Vec<DownloadRecord> = {

@@ -1,5 +1,5 @@
 import { categoryById, formatBytes, formatEta, formatSpeed } from '../lib/categories'
-import type { DownloadRecord } from '../lib/types'
+import type { DownloadRecord, SpeedUnit } from '../lib/types'
 import { SegmentBar } from './SegmentBar'
 import { CancelIcon, FolderIcon, PauseIcon, PlayIcon, RetryIcon } from './icons'
 
@@ -8,6 +8,7 @@ interface DownloadRowProps {
   selected: boolean
   checked: boolean
   queueName: string | null
+  speedUnit: SpeedUnit
   onSelect: () => void
   onToggleCheck: () => void
   onPause: () => void
@@ -23,6 +24,7 @@ export function DownloadRow({
   selected,
   checked,
   queueName,
+  speedUnit,
   onSelect,
   onToggleCheck,
   onPause,
@@ -61,7 +63,7 @@ export function DownloadRow({
         </div>
         <span className={`status-pill ${record.status}`}>{record.status}</span>
         <div className="row-stats">
-          <div className="speed tabular">{record.status === 'downloading' ? formatSpeed(record.speedBps) : ' '}</div>
+          <div className="speed tabular">{record.status === 'downloading' ? formatSpeed(record.speedBps, speedUnit) : ' '}</div>
           <div className="eta tabular">{formatEta(record)}</div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener'
 import { TitleBar } from './components/TitleBar'
 import { TopBar } from './components/TopBar'
@@ -74,7 +74,58 @@ export default function App() {
     ids.splice(to, 0, ids.splice(from, 1)[0])
     api.reorderDownloads(ids)
     setDragId(null)
+    stopAutoScroll()
   }
+
+  // Auto-scrolls the list while dragging a row past its top/bottom edge —
+  // without this, reordering into a long list means dropping, scrolling
+  // manually, and picking the row back up over and over.
+  const listRef = useRef<HTMLDivElement>(null)
+  const scrollDirRef = useRef(0)
+  const scrollRafRef = useRef<number | null>(null)
+
+  function stepAutoScroll() {
+    const el = listRef.current
+    if (el && scrollDirRef.current !== 0) {
+      el.scrollTop += scrollDirRef.current
+      scrollRafRef.current = requestAnimationFrame(stepAutoScroll)
+    } else {
+      scrollRafRef.current = null
+    }
+  }
+
+  function stopAutoScroll() {
+    scrollDirRef.current = 0
+    if (scrollRafRef.current !== null) {
+      cancelAnimationFrame(scrollRafRef.current)
+      scrollRafRef.current = null
+    }
+  }
+
+  function handleListDragOver(e: DragEvent) {
+    if (!canReorder || !dragId) return
+    const el = listRef.current
+    if (!el) return
+    const EDGE = 64
+    const MAX_SPEED = 18
+    const rect = el.getBoundingClientRect()
+    const distFromTop = e.clientY - rect.top
+    const distFromBottom = rect.bottom - e.clientY
+
+    if (distFromTop < EDGE) {
+      scrollDirRef.current = -MAX_SPEED * (1 - Math.max(distFromTop, 0) / EDGE)
+    } else if (distFromBottom < EDGE) {
+      scrollDirRef.current = MAX_SPEED * (1 - Math.max(distFromBottom, 0) / EDGE)
+    } else {
+      scrollDirRef.current = 0
+    }
+
+    if (scrollDirRef.current !== 0 && scrollRafRef.current === null) {
+      scrollRafRef.current = requestAnimationFrame(stepAutoScroll)
+    }
+  }
+
+  useEffect(() => stopAutoScroll, [])
 
   const activeDownloads = useMemo(() => allSorted.filter((d) => d.status === 'downloading'), [allSorted])
   const queuedDownloads = useMemo(() => allSorted.filter((d) => d.status === 'queued'), [allSorted])
@@ -179,6 +230,7 @@ export default function App() {
       <TitleBar />
       <TopBar
         totalSpeedBps={totalSpeed}
+        speedUnit={settings.speedUnit}
         speedHistory={heroHistory}
         activeCount={activeDownloads.length}
         activeConnections={totalConnections}
@@ -207,7 +259,7 @@ export default function App() {
           onDeleteQueue={deleteQueue}
         />
 
-        <main className="list-pane">
+        <main className="list-pane" ref={listRef} onDragOver={handleListDragOver}>
           {list.length > 0 && (
             <div className="list-toolbar">
               <label className="check-all">
@@ -245,7 +297,10 @@ export default function App() {
                   e.dataTransfer.setData('text/plain', record.id)
                   e.dataTransfer.effectAllowed = 'move'
                 }}
-                onDragEnd={() => setDragId(null)}
+                onDragEnd={() => {
+                  setDragId(null)
+                  stopAutoScroll()
+                }}
                 onDragOver={(e) => canReorder && e.preventDefault()}
                 onDrop={(e) => {
                   if (!canReorder) return
@@ -258,6 +313,7 @@ export default function App() {
                   selected={record.id === selectedId}
                   checked={checkedIds.has(record.id)}
                   queueName={queueNameFor(record)}
+                  speedUnit={settings.speedUnit}
                   onSelect={() => setSelectedId(record.id)}
                   onToggleCheck={() => toggleChecked(record.id)}
                   onPause={() => api.pauseDownload(record.id)}
@@ -275,6 +331,7 @@ export default function App() {
         <Inspector
           record={selectedRecord}
           queueName={selectedQueueName}
+          speedUnit={settings.speedUnit}
           speedHistory={selectedHistory}
           onPause={() => selectedRecord && api.pauseDownload(selectedRecord.id)}
           onResume={() => selectedRecord && api.resumeDownload(selectedRecord.id)}
